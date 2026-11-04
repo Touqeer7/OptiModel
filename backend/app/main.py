@@ -18,6 +18,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from . import bpmn, nlp_generator
 from .domain import DomainError, Scenario, Workflow
 from .jobs import Jobs
+from .inspection import inspect_xml
+from .limits import MAX_PROMPT, MAX_XML, capabilities
 from .persistence import Store, new_id, now
 from .reporting import ARTIFACTS
 from .samples import sample
@@ -38,7 +40,7 @@ class ProjectBody(Body):
 
 class ImportBody(Body):
     name: str = Field(default="Imported model", min_length=1, max_length=120)
-    xml: str = Field(min_length=1, max_length=1_000_000)
+    xml: str = Field(min_length=1, max_length=MAX_XML)
 
 
 class RunBody(Body):
@@ -53,7 +55,7 @@ class ScenarioBody(Body):
 
 
 class ExtractBody(Body):
-    prompt: str = Field(min_length=1, max_length=12_000)
+    prompt: str = Field(min_length=1, max_length=MAX_PROMPT)
 
 
 class AcceptBody(Body):
@@ -69,7 +71,7 @@ def create_app(data_dir: Path | None = None):
         yield
         app.state.jobs.shutdown()
 
-    app = FastAPI(title="OptiModel Studio", version="3.0.0", lifespan=lifespan, docs_url=None, redoc_url=None)
+    app = FastAPI(title="OptiModel Studio", version="3.1.0", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "[::1]", "testserver"])
 
     @app.middleware("http")
@@ -94,7 +96,7 @@ def create_app(data_dir: Path | None = None):
             )
         # Bound the stream even when Content-Length is absent or dishonest.
         if request.method in ("POST", "PUT", "PATCH"):
-            limit = 1_100_000
+            limit = MAX_XML * 2 + 100_000
             length = request.headers.get("content-length", "0")
             try:
                 if int(length) > limit or int(length) < 0:
@@ -102,7 +104,12 @@ def create_app(data_dir: Path | None = None):
             except ValueError:
                 return JSONResponse(
                     status_code=413,
-                    content={"error": {"code": "body_limit", "message": "Request exceeds the 1.1 MB limit."}},
+                    content={
+                        "error": {
+                            "code": "body_limit",
+                            "message": "Request exceeds the 20.1 MB transport limit.",
+                        }
+                    },
                 )
             chunks, size = [], 0
             async for chunk in request.stream():
@@ -111,7 +118,10 @@ def create_app(data_dir: Path | None = None):
                     return JSONResponse(
                         status_code=413,
                         content={
-                            "error": {"code": "body_limit", "message": "Request exceeds the 1.1 MB limit."}
+                            "error": {
+                                "code": "body_limit",
+                                "message": "Request exceeds the 20.1 MB transport limit.",
+                            }
                         },
                     )
                 chunks.append(chunk)
@@ -207,6 +217,7 @@ def create_app(data_dir: Path | None = None):
     def display_model(record):
         return {
             **record,
+            "complexity": bpmn.complexity(Workflow.model_validate(record["ir"])),
             "display_xml": record["xml"]
             if "BPMNShape" in record["xml"]
             else bpmn.serialize(Workflow.model_validate(record["ir"])),
@@ -214,7 +225,21 @@ def create_app(data_dir: Path | None = None):
 
     @app.get("/api/v1/health")
     def health():
-        return {"status": "ok", "version": "3.0.0", "storage_schema": 1, "provider": nlp_generator.status()}
+        return {
+            "status": "ok",
+            "version": "3.1.0",
+            "storage_schema": 1,
+            "provider": nlp_generator.status(),
+            "capabilities": capabilities(),
+        }
+
+    @app.get("/api/v1/capabilities")
+    def supported_capabilities():
+        return capabilities()
+
+    @app.post("/api/v1/inspection")
+    def structural_inspection(body: ImportBody):
+        return inspect_xml(body.xml)
 
     @app.get("/docs", response_class=HTMLResponse, include_in_schema=False)
     def offline_docs():
@@ -277,7 +302,7 @@ def create_app(data_dir: Path | None = None):
             raise DomainError("Upload a .bpmn or .xml file.")
         raw = await file.read(bpmn.MAX_XML + 1)
         if len(raw) > bpmn.MAX_XML:
-            raise HTTPException(413, "BPMN exceeds 1 MB.")
+            raise HTTPException(413, "BPMN exceeds 10 MB.")
         try:
             xml = raw.decode("utf-8-sig")
         except UnicodeDecodeError as exc:
@@ -295,6 +320,7 @@ def create_app(data_dir: Path | None = None):
         return {
             "structural": "valid",
             "supported": True,
+            "complexity": bpmn.complexity(workflow),
             "diagnostics": record["diagnostics"],
             "verification": verify(workflow),
             "display_xml": record["xml"] if "BPMNShape" in record["xml"] else bpmn.serialize(workflow),
@@ -419,6 +445,11 @@ def create_app(data_dir: Path | None = None):
     @app.post("/api/v1/projects/{project_id}/generation/accept", status_code=201)
     def accept(project_id: str, body: AcceptBody):
         bpmn.require_valid(body.ir)
+        verification = verify(body.ir)
+        if verification["status"] == "counterexample":
+            raise DomainError(
+                "Token verification found a deadlock or improper completion. Correct the draft gateways before accepting it."
+            )
         xml = bpmn.serialize(body.ir)
         return import_model(project_id, ImportBody(name=body.ir.name[:120], xml=xml))
 

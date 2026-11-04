@@ -5,6 +5,61 @@ from time import monotonic
 
 from .bpmn import require_valid
 from .domain import Workflow
+from .graph_tools import flow_index
+
+
+def structured_certificate(workflow: Workflow):
+    """Conservative series/parallel reduction for single-exit, well-nested DAGs.
+
+    Only serial vertices and complete matching AND/AND or XOR/XOR regions are reduced.
+    Cross-branch edges, mismatched joins and non-structured graphs fall back to reachability.
+    """
+    import networkx as nx
+
+    nodes = {n.id: n for n in workflow.nodes}
+    starts = [n.id for n in workflow.nodes if n.kind == "startEvent"]
+    ends = [n.id for n in workflow.nodes if n.kind == "endEvent"]
+    if len(starts) != 1 or len(ends) != 1:
+        return None
+    g = nx.MultiDiGraph()
+    g.add_nodes_from(nodes)
+    g.add_edges_from((e.source, e.target) for e in workflow.edges)
+    serial, regions = 0, 0
+    changed = True
+    while changed:
+        changed = False
+        for ident in list(g):
+            if ident in (starts[0], ends[0]) or ident not in g:
+                continue
+            if g.in_degree(ident) == g.out_degree(ident) == 1:
+                before, after = next(g.predecessors(ident)), next(g.successors(ident))
+                g.remove_node(ident)
+                g.add_edge(before, after)
+                serial += 1
+                changed = True
+        for fork in list(g):
+            successors = list(g.successors(fork))
+            if g.out_degree(fork) < 2 or len(successors) != 1:
+                continue
+            join = successors[0]
+            if (
+                nodes[fork].kind not in ("parallelGateway", "exclusiveGateway")
+                or nodes[fork].kind != nodes[join].kind
+                or set(g.predecessors(join)) != {fork}
+            ):
+                continue
+            g.remove_edges_from(list(g.edges(fork, keys=True)))
+            g.add_edge(fork, join)
+            regions += 1
+            changed = True
+    if set(g) == {starts[0], ends[0]} and g.number_of_edges() == 1:
+        return {
+            "serial_reductions": serial,
+            "matched_gateway_regions": regions,
+            "source_nodes": len(nodes),
+            "source_flows": len(workflow.edges),
+        }
+    return None
 
 
 def to_petri(workflow: Workflow) -> dict:
@@ -12,9 +67,10 @@ def to_petri(workflow: Workflow) -> dict:
     # Keep source BPMN IDs distinct from internal source/sink place names.
     places = ["source", *[f"flow:{e.id}" for e in workflow.edges], "sink"]
     transitions = []
+    incoming_flows, outgoing_flows = flow_index(workflow)
     for node in workflow.nodes:
-        incoming = [f"flow:{e.id}" for e in workflow.edges if e.target == node.id]
-        outgoing = [f"flow:{e.id}" for e in workflow.edges if e.source == node.id]
+        incoming = [f"flow:{ident}" for ident in incoming_flows[node.id]]
+        outgoing = [f"flow:{ident}" for ident in outgoing_flows[node.id]]
         if node.kind == "startEvent":
             incoming = ["source"]
         if node.kind == "endEvent":
@@ -41,13 +97,39 @@ def to_petri(workflow: Workflow) -> dict:
 
 def verify(workflow: Workflow, max_states: int = 5000, seconds: float = 2) -> dict:
     net = to_petri(workflow)
+    # Avoid exponential interleavings when an exact compositional reduction applies.
+    if len(workflow.nodes) > 32 and max_states >= 5000 and seconds >= 2:
+        certificate = structured_certificate(workflow)
+        if certificate:
+            return {
+                "status": "no_counterexample",
+                "soundness": "not_claimed",
+                "method": "structural_reduction",
+                "certificate": certificate,
+                "scope": "Series/parallel structural reduction for an acyclic single-entry/exit model; matching AND and XOR regions, all branch alternatives; business conditions not evaluated",
+                "states": 0,
+                "truncated": False,
+                "limit_reason": None,
+                "proper_completion": True,
+                "all_states_can_complete": True,
+                "dead_transitions": [],
+                "deadlock_count": 0,
+                "counterexample_trace": [],
+                "deadlock_marking": {},
+                "petri_net": net,
+            }
     places = net["places"]
+    end_count = sum(n.kind == "endEvent" for n in workflow.nodes)
     index = {p: i for i, p in enumerate(places)}
     transitions = [
         (t, [index[p] for p in t["inputs"]], [index[p] for p in t["outputs"]]) for t in net["transitions"]
     ]
     initial = tuple(int(p == "source") for p in places)
     final = tuple(int(p == "sink") for p in places)
+
+    def is_final(marking):
+        return 1 <= marking[-1] <= end_count and not any(marking[:-1])
+
     parents = {initial: None}
     queue = deque([initial])
     adjacency, fired, deadlocks, improper = {}, set(), [], []
@@ -61,9 +143,11 @@ def verify(workflow: Workflow, max_states: int = 5000, seconds: float = 2) -> di
         marking = queue.popleft()
         targets = []
         enabled = [(t, ins, outs) for t, ins, outs in transitions if all(marking[i] >= 1 for i in ins)]
-        if marking[index["sink"]] and marking != final:
+        if marking[index["sink"]] > end_count or (
+            end_count == 1 and marking[index["sink"]] and marking != final
+        ):
             improper.append(marking)
-        if not enabled and marking != final:
+        if not enabled and not is_final(marking):
             deadlocks.append(marking)
         for trans, ins, outs in enabled:
             fired.add(trans["id"])
@@ -75,8 +159,11 @@ def verify(workflow: Workflow, max_states: int = 5000, seconds: float = 2) -> di
             nxt = tuple(nxt)
             targets.append(nxt)
             if nxt not in parents:
-                if len(parents) >= max_states or sum(nxt) > 64:
+                if len(parents) >= max_states or sum(nxt) > max(64, len(workflow.nodes)):
                     truncated, reason = True, "state_or_token_limit"
+                    break
+                if (len(parents) + 1) * len(places) > 2_000_000:
+                    truncated, reason = True, "marking_memory_budget"
                     break
                 parents[nxt] = (marking, trans["node_id"])
                 queue.append(nxt)
@@ -87,7 +174,8 @@ def verify(workflow: Workflow, max_states: int = 5000, seconds: float = 2) -> di
     for source, targets in adjacency.items():
         for target in targets:
             reverse.setdefault(target, []).append(source)
-    can_complete = {final} if final in parents else set()
+    finals = {marking for marking in parents if is_final(marking)}
+    can_complete = set(finals)
     frontier = list(can_complete)
     while frontier:
         for prev in reverse.get(frontier.pop(), []):
@@ -110,11 +198,12 @@ def verify(workflow: Workflow, max_states: int = 5000, seconds: float = 2) -> di
     return {
         "status": status,
         "soundness": "not_claimed",
-        "scope": "bounded flow-place reachability for the supported acyclic subset; all XOR choices explored without evaluating business conditions",
+        "method": "bounded_reachability",
+        "scope": "bounded flow-place reachability for the supported acyclic subset; all XOR choices explored without evaluating business conditions; normal multiple ends complete when all active tokens are consumed",
         "states": len(parents),
         "truncated": truncated,
         "limit_reason": reason,
-        "proper_completion": bool(final in parents and not improper) if not truncated else None,
+        "proper_completion": bool(finals and not improper) if not truncated else None,
         "all_states_can_complete": len(can_complete) == len(parents) if not truncated else None,
         "dead_transitions": dead_transitions,
         "deadlock_count": len(deadlocks),

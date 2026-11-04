@@ -1,3 +1,5 @@
+> Historical Studio 3.0 snapshot. For the current expanded scope, verification methods and new regression/scale evidence, read [the Studio 3.1 upgrade](complex-model-upgrade.md).
+
 # Validation and measured benchmarks
 
 Recorded 2026-11-04 on Windows x64, Python 3.14.3, Node 22.13.1, npm 10.9.2. All results below are observed commands, not targets. This host did not execute Linux/macOS application startup or use live AI credentials.

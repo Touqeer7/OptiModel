@@ -1,0 +1,45 @@
+{
+  "scope": "Three live requests using synthetic descriptions against the user-configured provider; no credentials or private prompts are recorded. This is a smoke test, not universal language/fidelity evaluation.",
+  "results": [
+    {
+      "case": "sequential",
+      "http_status": 200,
+      "elapsed_seconds": 12.7,
+      "attempts": 1,
+      "nodes": 4,
+      "tasks": 2,
+      "time_unit": "minutes",
+      "diagnostic_codes": [],
+      "clarification_questions": [],
+      "verification_status": "no_counterexample"
+    },
+    {
+      "case": "parallel_decision",
+      "http_status": 200,
+      "elapsed_seconds": 23.32,
+      "attempts": 1,
+      "nodes": 12,
+      "tasks": 6,
+      "time_unit": "minutes",
+      "diagnostic_codes": [],
+      "clarification_questions": [],
+      "verification_status": "no_counterexample"
+    },
+    {
+      "case": "clarification",
+      "http_status": 200,
+      "elapsed_seconds": 4.35,
+      "attempts": 1,
+      "nodes": null,
+      "tasks": null,
+      "diagnostic_codes": [
+        "clarification_required"
+      ],
+      "clarification_questions": [
+        "What process would you like to improve, and what are its current steps and desired outcome?"
+      ],
+      "placeholder_draft_offered": false
+    }
+  ],
+  "note": "The first vague-input smoke test exposed a placeholder draft with a material ambiguity. The final implementation converts all materially ambiguous results to clarification-only responses; the recorded clarification result is the subsequent live recheck."
+}

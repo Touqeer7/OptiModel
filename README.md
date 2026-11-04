@@ -35,16 +35,22 @@ If port 8000 is occupied, use `python run.py --port 8001`; do not terminate an u
 
 Other samples: **Order fulfillment** (parallel preparation and synchronization) and **Loan review** (approved/declined exclusive routing). All sample timings/staffing/rates are illustrative assumptions. Existing `frontend/1.xml`, `frontend/2.xml` and `diagram_1.bpmn` remain intact; the last file has no explicit duration metadata and requires scenario inputs.
 
+## Larger models and prompt reliability
+
+Studio 3.1 adds nested embedded subprocess analysis, multiple normal endings, more task types, selected XOR-trace scheduling, structural assessment of unsupported files, and one AI repair/clarification pass. Executable analysis accepts up to **2,000 flow nodes**, **6,000 flows** and **10 MB** of UTF-8 BPMN XML; AI descriptions can contain up to **60,000 characters**. These are input bounds, not a guarantee that every model can be exhaustively verified.
+
+See [the upgrade, evidence and limits](docs/complex-model-upgrade.md), [nested example](examples/complex/README.md), and the live `/api/v1/capabilities` endpoint. Models outside executable scope can receive a read-only structural assessment, including cycles and invalid references, without pretending to simulate them.
+
 ## Supported scope
 
 | Capability | Current behavior |
 |---|---|
-| BPMN core | One acyclic process, one plain start/end, normal/user/service tasks, explicit AND split/join and XOR split/merge |
+| BPMN core | One acyclic process, one plain start and one or more normal ends, ordinary/task variants, nested single-entry/exit embedded subprocesses, explicit AND and XOR gateways |
 | Timing and resources | One deterministic case, positive stated durations, continuously available role-specific slots |
 | XOR routing | Explicit selected flow or API-supplied seeded probabilities; conditions are labels, never executed code |
-| Optimization | CP-SAT minimizes completion with identical roles, capacities and durations; validated candidates, real statuses/bounds/gaps, honest baseline fallback |
-| Unsupported | Loops, advanced events/gateways, subprocesses, collaboration, calendars, multi-instance/multi-case semantics; XOR optimization |
-| Verification | Bounded marking exploration, traces, exact completion and reverse reachability; truncation is inconclusive; no full soundness claim |
+| Optimization | Analytical lower-bound certificates or CP-SAT minimize completion for the same selected trace and resource assumptions; independently validated candidates and honest fallback |
+| Unsupported | Executable loops, advanced events/gateways, call/event subprocesses, collaboration, calendars and multi-instance/multi-case semantics (structural inspection available) |
+| Verification | Matching-region reduction when applicable; otherwise bounded marking exploration, traces and completion checks; truncation is inconclusive |
 | Editing | Source XML edits become new validated versions; separate display layout if coordinates are missing |
 
 See the [support matrix](docs/bpmn-support-matrix.md) and [metrics/assumptions](docs/metrics-and-assumptions.md). A scheduling experiment exports the **Original / Analyzed BPMN** unchanged. Revised process transformations, automated capacity Pareto search, stochastic durations and multi-case throughput are not implemented.
@@ -61,7 +67,7 @@ AI_API_KEY=
 
 Supply your own values for the blank fields; no named model is assumed to exist. Existing `MAKEREND_API_KEY`, `MAKEREND_MODEL` and `MAKEREND_BASE_URL` are supported as fallbacks. Local OpenAI-compatible servers can use an HTTP loopback base URL without a key; remote endpoints require HTTPS. Restart after changing environment settings.
 
-The UI shows the provider destination before sending a description. Only the submitted description and extraction schema are sent. The provider returns structured JSON, which remains a draft until the analyst reviews task/branch fidelity and resolves material ambiguity. XML and display coordinates are generated deterministically after review. No secret goes to browser code; no fabricated fallback is used on failure. Do not put a key in `.env.example` or commit `.env`.
+The UI shows the provider destination before sending a description. The submitted description, schema and validation feedback for one repair attempt are sent. The provider returns structured JSON, which remains a draft until the analyst reviews task/branch fidelity and resolves material ambiguity. XML and display coordinates are generated deterministically after review. No secret goes to browser code; no fabricated fallback is used on failure. Do not put a key in `.env.example` or commit `.env`.
 
 ## Data, API and migration
 
@@ -104,7 +110,7 @@ Measured checks and exact results are in [validation and benchmarks](docs/valida
 - **Rejected model:** inspect linked element IDs and the support matrix. A valid BPMN file may use unsupported semantics. Do not remove diagnostics just to obtain a number.
 - **Unknown timings/roles:** enter them explicitly in Simulate and choose a consistent unit. Names containing durations are not parsed as measured facts.
 - **No improvement:** a baseline can already be optimal. Read the solver status and bound; staffing changes need a separate run.
-- **AI unavailable:** file import, samples, validation, simulation, optimization and exports remain available. Check model/key/endpoint or use a local provider. Live provider behavior has not been tested with real credentials here.
+- **AI unavailable:** file import, samples, validation, simulation, optimization and exports remain available. Check model/key/endpoint or use a local provider. Provider availability, language interpretation and faithful extraction remain provider-dependent; review generated drafts.
 - **Missing old artifacts:** original source reports were untracked and retained locally. Studio results are stored only under their run IDs; global "latest" downloads are retired.
 
 [Architecture](docs/architecture.md) · [Engineering audit](docs/engineering-audit.md) · [Progress and remaining limits](docs/implementation-progress.md) · [Exact changed files](docs/change-manifest.md)

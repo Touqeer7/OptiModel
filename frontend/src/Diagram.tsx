@@ -93,7 +93,7 @@ export function Diagram({
   return (
     <div className="diagram-shell">
       <div className="diagram-meta">
-        <span className="eyebrow">BPMN 2.0 / ORIGINAL MODEL</span>
+        <span className="eyebrow">BPMN 2.0 / PROCESS VIEW</span>
         <span>Drag to pan · scroll to zoom · select a task</span>
       </div>
       <section

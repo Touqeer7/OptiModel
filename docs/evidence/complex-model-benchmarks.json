@@ -1,0 +1,159 @@
+{
+  "platform": "Windows",
+  "python": "3.14.3",
+  "method": "Three warm-process repeats per case; median and all samples. Solver search budget 1 second per repeat; timings include model construction. Synthetic inputs, not real-world performance guarantees.",
+  "cases": [
+    {
+      "name": "100-task benchmark",
+      "nodes": 102,
+      "tasks": 100,
+      "xml_bytes": 78036,
+      "flows": 101,
+      "median_ms": {
+        "parse_ms": 6.894,
+        "verification_ms": 1.613,
+        "simulation_ms": 3.479,
+        "optimization_ms": 1.82
+      },
+      "samples_ms": [
+        {
+          "parse_ms": 7.036,
+          "verification_ms": 1.691,
+          "simulation_ms": 3.611,
+          "optimization_ms": 1.834
+        },
+        {
+          "parse_ms": 6.52,
+          "verification_ms": 1.516,
+          "simulation_ms": 3.406,
+          "optimization_ms": 1.82
+        },
+        {
+          "parse_ms": 6.894,
+          "verification_ms": 1.613,
+          "simulation_ms": 3.479,
+          "optimization_ms": 1.805
+        }
+      ],
+      "verification_method": "structural_reduction",
+      "verification_status": "no_counterexample",
+      "solver_status_last_repeat": "optimal",
+      "baseline_makespan": 395.0,
+      "selected_makespan_last_repeat": 395.0
+    },
+    {
+      "name": "1000-task benchmark",
+      "nodes": 1002,
+      "tasks": 1000,
+      "xml_bytes": 783174,
+      "flows": 1001,
+      "median_ms": {
+        "parse_ms": 113.651,
+        "verification_ms": 56.251,
+        "simulation_ms": 113.16,
+        "optimization_ms": 18.369
+      },
+      "samples_ms": [
+        {
+          "parse_ms": 120.519,
+          "verification_ms": 56.891,
+          "simulation_ms": 113.16,
+          "optimization_ms": 25.126
+        },
+        {
+          "parse_ms": 109.355,
+          "verification_ms": 56.0,
+          "simulation_ms": 110.525,
+          "optimization_ms": 18.369
+        },
+        {
+          "parse_ms": 113.651,
+          "verification_ms": 56.251,
+          "simulation_ms": 119.623,
+          "optimization_ms": 17.027
+        }
+      ],
+      "verification_method": "structural_reduction",
+      "verification_status": "no_counterexample",
+      "solver_status_last_repeat": "optimal",
+      "baseline_makespan": 3997.0,
+      "selected_makespan_last_repeat": 3997.0
+    },
+    {
+      "name": "1998-task benchmark",
+      "nodes": 2000,
+      "tasks": 1998,
+      "xml_bytes": 1578580,
+      "flows": 1999,
+      "median_ms": {
+        "parse_ms": 320.136,
+        "verification_ms": 208.878,
+        "simulation_ms": 394.132,
+        "optimization_ms": 37.858
+      },
+      "samples_ms": [
+        {
+          "parse_ms": 319.964,
+          "verification_ms": 208.878,
+          "simulation_ms": 394.132,
+          "optimization_ms": 35.532
+        },
+        {
+          "parse_ms": 320.136,
+          "verification_ms": 212.462,
+          "simulation_ms": 372.296,
+          "optimization_ms": 37.858
+        },
+        {
+          "parse_ms": 333.13,
+          "verification_ms": 198.299,
+          "simulation_ms": 396.354,
+          "optimization_ms": 39.026
+        }
+      ],
+      "verification_method": "structural_reduction",
+      "verification_status": "no_counterexample",
+      "solver_status_last_repeat": "optimal",
+      "baseline_makespan": 7986.0,
+      "selected_makespan_last_repeat": 7986.0
+    },
+    {
+      "name": "128 independent parallel tasks",
+      "nodes": 132,
+      "tasks": 128,
+      "xml_bytes": 153421,
+      "flows": 258,
+      "median_ms": {
+        "parse_ms": 14.081,
+        "verification_ms": 3.44,
+        "simulation_ms": 7.407,
+        "optimization_ms": 1035.113
+      },
+      "samples_ms": [
+        {
+          "parse_ms": 13.799,
+          "verification_ms": 3.525,
+          "simulation_ms": 7.764,
+          "optimization_ms": 1038.22
+        },
+        {
+          "parse_ms": 22.422,
+          "verification_ms": 3.44,
+          "simulation_ms": 7.407,
+          "optimization_ms": 1035.113
+        },
+        {
+          "parse_ms": 14.081,
+          "verification_ms": 3.39,
+          "simulation_ms": 7.344,
+          "optimization_ms": 1034.779
+        }
+      ],
+      "verification_method": "structural_reduction",
+      "verification_status": "no_counterexample",
+      "solver_status_last_repeat": "feasible",
+      "baseline_makespan": 36.0,
+      "selected_makespan_last_repeat": 36.0
+    }
+  ]
+}

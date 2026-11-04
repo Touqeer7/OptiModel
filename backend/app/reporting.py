@@ -257,7 +257,7 @@ def build_report(result, workflow, path):
     heading("Method and evidence")
     parts.append(
         p(
-            f"Intervention: {opt['intervention'] if opt else 'baseline'}. Solver: {opt['status'] if opt else 'not run'}; seed {result['config']['seed']}; time budget {result['config']['solver_seconds']} seconds."
+            f"Intervention: {opt['intervention'] if opt else 'baseline'}. Method: {opt.get('method', 'cp_sat') if opt else 'simulation'}; status: {opt['status'] if opt else 'not run'}; seed {result['config']['seed']}; search budget {result['config']['solver_seconds']} seconds."
         )
     )
     if opt:
@@ -277,11 +277,11 @@ def build_report(result, workflow, path):
             p("Topology derived from the recorded source model. Scheduling changes are exported separately."),
         ]
     )
-    heading("Bounded verification")
+    heading("Verification evidence")
     verification = result["verification"]
     parts.append(
         p(
-            f"Status: {verification['status']}. Explored {verification['states']} states; deadlocks {verification['deadlock_count']}; truncated: {verification['truncated']}."
+            f"Method: {verification.get('method', 'bounded_reachability')}. Status: {verification['status']}. Explored {verification['states']} states; deadlocks {verification['deadlock_count']}; truncated: {verification['truncated']}."
         )
     )
     parts.append(p(verification["scope"]))

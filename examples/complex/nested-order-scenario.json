@@ -1,0 +1,12 @@
+{
+  "unit": "minutes",
+  "seed": 42,
+  "resources": [
+    { "role": "Sales", "capacity": 1 },
+    { "role": "Warehouse", "capacity": 1 },
+    { "role": "Accounts", "capacity": 1 },
+    { "role": "Dispatch", "capacity": 1 }
+  ],
+  "routes": { "stock": "stock_yes" },
+  "solver_seconds": 5
+}

@@ -3,11 +3,12 @@
 import heapq
 import math
 import random
-from collections import defaultdict
+from collections import defaultdict, deque
 from time import monotonic
 
 from .bpmn import require_valid
 from .domain import DomainError, Scenario, TASK_KINDS, TaskSetting, Workflow
+from .graph_tools import execution_graph, flow_index, task_predecessors
 
 
 def settings(workflow: Workflow, config: Scenario) -> dict[str, TaskSetting]:
@@ -22,8 +23,16 @@ def settings(workflow: Workflow, config: Scenario) -> dict[str, TaskSetting]:
         if setting is None:
             if node.duration is None or node.role is None:
                 raise DomainError(f"{ident}: provide an explicit duration and resource role.")
+            duration = node.duration
+            if workflow.time_unit != "time units":
+                factors = {"minutes": 1, "hours": 60, "days": 1440}
+                if config.unit not in factors:
+                    raise DomainError(
+                        "Choose minutes, hours or days for a model with explicit source timing units."
+                    )
+                duration *= factors[workflow.time_unit] / factors[config.unit]
             setting = TaskSetting(
-                duration=node.duration,
+                duration=duration,
                 role=node.role,
                 provenance=node.provenance if node.provenance != "unknown" else "source",
             )
@@ -35,10 +44,11 @@ def settings(workflow: Workflow, config: Scenario) -> dict[str, TaskSetting]:
 
 def choose_routes(workflow: Workflow, config: Scenario) -> dict[str, str]:
     rng = random.Random(config.seed)
+    _, outgoing = flow_index(workflow)
     splits = {
-        n.id: [e.id for e in workflow.edges if e.source == n.id]
+        n.id: outgoing[n.id]
         for n in workflow.nodes
-        if n.kind == "exclusiveGateway" and sum(e.source == n.id for e in workflow.edges) > 1
+        if n.kind == "exclusiveGateway" and len(outgoing[n.id]) > 1
     }
     if (set(config.routes) | set(config.probabilities)) - set(splits):
         raise DomainError("Route settings reference an unknown exclusive split.")
@@ -106,48 +116,57 @@ def simulate(workflow: Workflow, config: Scenario) -> dict:
     routes = choose_routes(workflow, config)
     slots = resource_slots(config)
     free = {role: list(names) for role, names in slots.items()}
-    incoming = {n.id: [e.id for e in workflow.edges if e.target == n.id] for n in workflow.nodes}
-    outgoing = {n.id: [e.id for e in workflow.edges if e.source == n.id] for n in workflow.nodes}
+    incoming, outgoing = flow_index(workflow)
+    nodes = {n.id: n for n in workflow.nodes}
+    targets = {e.id: e.target for e in workflow.edges}
+    pending = deque(n.id for n in workflow.nodes if n.kind == "startEvent")
+    queued = set(pending)
     tokens, ready, running, started, completed, rows, events = {}, {}, [], set(), set(), [], []
     clock, serial = 0.0, 0
-    end_id = next(n.id for n in workflow.nodes if n.kind == "endEvent")
-    deadline = monotonic() + 5
+    end_ids = {n.id for n in workflow.nodes if n.kind == "endEvent"}
+    deadline = monotonic() + 10
 
     def produce(ident):
         for edge in [routes[ident]] if ident in routes else outgoing[ident]:
             if edge in tokens:
                 raise DomainError(f"{ident}: repeated token on a flow is unsupported.")
             tokens[edge] = clock
+            if targets[edge] not in queued:
+                pending.append(targets[edge])
+                queued.add(targets[edge])
 
     while True:
-        if monotonic() > deadline or len(events) > 2000:
+        if monotonic() > deadline or len(events) > len(workflow.nodes) * 4:
             raise DomainError("Simulation exceeded its event/time budget.")
-        changed = True
-        while changed:
-            changed = False
-            for node in workflow.nodes:
-                if node.id in started:
-                    continue
-                ins = incoming[node.id]
-                available = [i for i in ins if i in tokens]
-                enabled = node.kind == "startEvent" or (
-                    bool(available)
-                    if node.kind == "exclusiveGateway"
-                    else len(available) == len(ins) and bool(ins)
-                )
-                if not enabled:
-                    continue
-                consumed = available[:1] if node.kind == "exclusiveGateway" else available
-                ready_time = max((tokens.pop(i) for i in consumed), default=clock)
-                started.add(node.id)
-                events.append({"time": clock, "node_id": node.id, "event": "enabled"})
-                changed = True
-                if node.kind in TASK_KINDS:
-                    ready[node.id] = (ready_time, node)
-                else:
-                    completed.add(node.id)
-                    events.append({"time": clock, "node_id": node.id, "event": "completed"})
-                    produce(node.id)
+        while pending:
+            ident = pending.popleft()
+            queued.remove(ident)
+            node = nodes[ident]
+            ins = incoming[ident]
+            available = [i for i in ins if i in tokens]
+            if ident in started:
+                if available:
+                    raise DomainError(
+                        f"{ident}: repeated activation is outside the single-activation subset; review merge gateways."
+                    )
+                continue
+            enabled = node.kind == "startEvent" or (
+                bool(available)
+                if node.kind == "exclusiveGateway"
+                else len(available) == len(ins) and bool(ins)
+            )
+            if not enabled:
+                continue
+            consumed = available[:1] if node.kind == "exclusiveGateway" else available
+            ready_time = max((tokens.pop(i) for i in consumed), default=clock)
+            started.add(ident)
+            events.append({"time": clock, "node_id": ident, "event": "enabled"})
+            if node.kind in TASK_KINDS:
+                ready[ident] = (ready_time, node)
+            else:
+                completed.add(ident)
+                events.append({"time": clock, "node_id": ident, "event": "completed"})
+                produce(ident)
         for ident, (ready_time, node) in sorted(list(ready.items()), key=lambda x: (x[1][0], x[0])):
             setting = task_settings[ident]
             if not free[setting.role]:
@@ -171,7 +190,7 @@ def simulate(workflow: Workflow, config: Scenario) -> dict:
             del ready[ident]
             events.append({"time": clock, "node_id": ident, "event": "started", "resource": slot})
         if not running:
-            if end_id in completed and not tokens and not ready:
+            if end_ids & completed and not tokens and not ready:
                 break
             raise DomainError(
                 "Selected route deadlocks or leaves residual tokens; review the gateway structure."
@@ -184,20 +203,25 @@ def simulate(workflow: Workflow, config: Scenario) -> dict:
             completed.add(ident)
             events.append({"time": clock, "node_id": ident, "event": "completed", "resource": slot})
             produce(ident)
-    from .bpmn import graph
     import networkx as nx
 
-    trace_graph = graph(workflow).subgraph(completed)
-    lengths, paths = {}, {}
+    trace_graph = execution_graph(workflow, routes)
+    lengths, previous = {}, {}
     for ident in nx.topological_sort(trace_graph):
         pred = max(trace_graph.predecessors(ident), key=lambda p: lengths[p], default=None)
         lengths[ident] = (lengths[pred] if pred else 0) + (
             task_settings[ident].duration if ident in task_settings else 0
         )
-        paths[ident] = (paths[pred] if pred else []) + ([ident] if ident in task_settings else [])
+        previous[ident] = pred
+    last = max(end_ids & completed, key=lambda ident: lengths[ident])
+    critical_path = []
+    while last is not None:
+        if last in task_settings:
+            critical_path.append(last)
+        last = previous[last]
     result = {
-        "precedence_lower_bound": lengths[end_id],
-        "critical_path_task_ids": paths[end_id],
+        "precedence_lower_bound": max(lengths[ident] for ident in end_ids & completed),
+        "critical_path_task_ids": list(reversed(critical_path)),
         "critical_path_scope": "Precedence-only longest path for this selected trace, ignoring resource waits; a lower bound, not a resource-constrained critical-chain proof.",
         "metrics": metrics(rows, config),
         "schedule": sorted(rows, key=lambda s: (s["start"], s["id"])),
@@ -214,7 +238,7 @@ def simulate(workflow: Workflow, config: Scenario) -> dict:
         workflow,
         config,
         result["schedule"],
-        expected_ids=set(task_settings) if not routes else {s["id"] for s in rows},
+        expected_ids={ident for ident in trace_graph if ident in task_settings},
         control_times={e["node_id"]: e["time"] for e in events if e["event"] == "completed"},
     )
     return result
@@ -229,6 +253,10 @@ def validate_schedule(
 ):
     """Independent task, resource, duration, and graph precedence checks for accepted schedules."""
     task_settings = settings(workflow, config)
+    g = execution_graph(workflow, choose_routes(workflow, config))
+    required = set(task_settings) & set(g)
+    if expected_ids != required:
+        raise DomainError("Candidate task coverage does not match the selected execution graph.")
     if len(rows) != len(expected_ids) or {s["id"] for s in rows} != expected_ids:
         raise DomainError("Candidate schedule has missing or duplicate tasks.")
     slots = resource_slots(config)
@@ -237,19 +265,22 @@ def validate_schedule(
         setting = task_settings[row["id"]]
         if row["resource"] not in slots[setting.role] or row["role"] != setting.role:
             raise DomainError("Candidate assigns an ineligible resource.")
-        if row["start"] < 0 or abs(row["finish"] - row["start"] - setting.duration) > 1e-7:
+        if (
+            not all(math.isfinite(row[k]) for k in ("start", "finish", "duration", "wait", "ready"))
+            or row["start"] < 0
+            or row["finish"] <= row["start"]
+            or abs(row["duration"] - setting.duration) > 1e-7
+            or abs(row["finish"] - row["start"] - setting.duration) > 1e-7
+        ):
             raise DomainError("Candidate duration/start invariant failed.")
     for role_slots in slots.values():
         for slot in role_slots:
             assigned = sorted([s for s in rows if s["resource"] == slot], key=lambda s: s["start"])
             if any(a["finish"] > b["start"] + 1e-7 for a, b in zip(assigned, assigned[1:])):
                 raise DomainError("Candidate exceeds resource capacity.")
-    from .bpmn import graph
-    import networkx as nx
-
-    g = graph(workflow)
+    predecessors = task_predecessors(workflow, g)
     for ident, row in by_id.items():
-        for prev in nx.ancestors(g, ident) & set(by_id):
+        for prev in predecessors[ident]:
             if by_id[prev]["finish"] > row["start"] + 1e-7:
                 raise DomainError("Candidate violates task precedence.")
     if control_times:

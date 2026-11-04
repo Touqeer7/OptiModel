@@ -32,13 +32,14 @@ import {
 import { api, ApiError, download } from "./api";
 import { Diagram } from "./Diagram";
 import { Timeline } from "./Timeline";
-import { date, num } from "./format";
+import { convertTime, date, num } from "./format";
 import { isTask } from "./types";
 import type {
   Config,
   Diagnostic,
   Draft,
   Health,
+  Inspection,
   Model,
   Project,
   Run,
@@ -65,7 +66,7 @@ const navigation: [Section, ReactNode][] = [
   ["Reports", <FileText key="reports" size={18} />],
 ];
 const configFor = (model: Model): Config => ({
-  unit: "time units",
+  unit: model.ir.time_unit || "time units",
   seed: 42,
   solver_seconds: 5,
   resources: [
@@ -133,6 +134,12 @@ export default function App() {
   const [xml, setXml] = useState("");
   const [prompt, setPrompt] = useState("");
   const [generationError, setGenerationError] = useState("");
+  const [inspection, setInspection] = useState<
+    (Inspection & { filename: string }) | null
+  >(null);
+  const [generationDiagnostics, setGenerationDiagnostics] = useState<
+    Diagnostic[]
+  >([]);
   const [draft, setDraft] = useState("");
   const [approved, setApproved] = useState(false);
   const [compareIds, setCompareIds] = useState(["", ""]);
@@ -329,7 +336,11 @@ export default function App() {
     const source = model.ir.nodes.find((n) => n.id === id)!;
     setConfig((c) => {
       const previous = c.tasks[id] || {
-        duration: source.duration ?? 0,
+        duration: convertTime(
+          source.duration ?? 0,
+          model.ir.time_unit || "time units",
+          c.unit,
+        ),
         role: source.role ?? "",
       };
       return {
@@ -447,7 +458,7 @@ export default function App() {
             <CircleHelp size={15} /> API & local diagnostics{" "}
             <ArrowUpRight size={12} />
           </a>
-          <div className="version mono">STUDIO / 3.0</div>
+          <div className="version mono">STUDIO / 3.1</div>
         </div>
       </aside>
       <div className="main-shell">
@@ -488,10 +499,30 @@ export default function App() {
             const picked = e.target.files?.[0];
             if (!picked) return;
             void action("Importing source model", async () => {
-              if (picked.size > 1_000_000)
-                throw new Error("BPMN exceeds 1 MB.");
+              if (
+                picked.size >
+                (health?.capabilities?.limits.xml_bytes || 10_000_000)
+              )
+                throw new Error("BPMN exceeds 10 MB.");
               const projectId = await ensureProject("Imported processes");
-              await addModel(projectId, await picked.text(), picked.name);
+              const source = await picked.text();
+              setInspection(null);
+              try {
+                await addModel(projectId, source, picked.name);
+              } catch (error) {
+                if (error instanceof ApiError) {
+                  try {
+                    const report = await api<Inspection>("/inspection", {
+                      xml: source,
+                    });
+                    setInspection({ ...report, filename: picked.name });
+                    setSection("Workspace");
+                  } catch {
+                    // Malformed or unsafe XML retains the original import diagnostic.
+                  }
+                }
+                throw error;
+              }
             });
             e.target.value = "";
           }}
@@ -521,9 +552,9 @@ export default function App() {
                 {section === "Workspace"
                   ? "A local place to model, test, and compare how your process could work."
                   : section === "Model"
-                    ? "Review the original diagram and the facts attached to each activity."
+                    ? "Review the process diagram and the facts attached to each activity."
                     : section === "Validate"
-                      ? "Structural checks and bounded token-flow exploration, with a clear statement of scope."
+                      ? "Structural checks and token-flow analysis, with a clear statement of scope."
                       : section === "Simulate"
                         ? "Define timing, roles, and capacity before running a reproducible single-case experiment."
                         : section === "Optimize"
@@ -568,6 +599,71 @@ export default function App() {
             </div>
           )}
 
+          {inspection && (
+            <section className="panel" aria-label="BPMN structural inspection">
+              <div className="section-heading">
+                <h2>File assessment: {inspection.filename}</h2>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setInspection(null)}
+                >
+                  <X size={16} /> Dismiss assessment
+                </button>
+              </div>
+              <p>
+                <strong>
+                  Structural inspection only. This file was not imported for
+                  simulation.
+                </strong>
+              </p>
+              <p className="muted">{inspection.notice}</p>
+              <p>
+                {inspection.processes} processes · {inspection.nodes} flow nodes
+                · {inspection.flows} flows · {inspection.cyclic_regions} cyclic
+                regions.
+              </p>
+              <ul className="diagnostics">
+                {[...inspection.diagnostics, ...inspection.reference_issues]
+                  .slice(0, 50)
+                  .map((d) => (
+                    <li key={`${d.code}_${d.element_id}_${d.message}`}>
+                      {d.element_id && (
+                        <span className="mono">{d.element_id}: </span>
+                      )}
+                      {d.message}
+                    </li>
+                  ))}
+              </ul>
+              <details>
+                <summary>Process and subprocess scope inventory</summary>
+                <div className="table-scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Scope</th>
+                        <th>Kind</th>
+                        <th>Nodes</th>
+                        <th>Flows</th>
+                        <th>Cyclic regions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {inspection.scopes.slice(0, 50).map((scope) => (
+                        <tr key={scope.path}>
+                          <td>{scope.name || scope.id}</td>
+                          <td>{scope.kind}</td>
+                          <td>{scope.nodes}</td>
+                          <td>{scope.flows}</td>
+                          <td>{scope.cyclic_regions}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            </section>
+          )}
           {section === "Workspace" && (
             <>
               <section className="workspace-intro">
@@ -820,10 +916,19 @@ export default function App() {
                   )}
                 </p>
                 <label htmlFor="description">Process description</label>
+                <p className="muted" id="description-help">
+                  Use prose, a numbered list, or arrows, in your preferred
+                  language. Include branch conditions, parallel work, roles, and
+                  timing units when known. Unknown facts stay unknown;
+                  unsupported or unclear requirements need review.
+                </p>
                 <textarea
                   id="description"
+                  aria-describedby="description-help"
                   rows={4}
-                  maxLength={12000}
+                  maxLength={
+                    health?.capabilities?.limits.prompt_characters || 60000
+                  }
                   value={prompt}
                   onChange={(e) => {
                     setPrompt(e.target.value);
@@ -841,6 +946,7 @@ export default function App() {
                     onClick={() =>
                       void action("Extracting a review draft", async () => {
                         setGenerationError("");
+                        setGenerationDiagnostics([]);
                         setDraft("");
                         setApproved(false);
                         const d = await api<Draft>("/generation/extract", {
@@ -853,11 +959,18 @@ export default function App() {
                           );
                           throw e;
                         });
-                        setDraft(JSON.stringify(d.ir, null, 2));
+                        setDraft(d.ir ? JSON.stringify(d.ir, null, 2) : "");
+                        setGenerationDiagnostics(d.diagnostics);
                         setApproved(false);
                         if (d.diagnostics.length)
                           setNotice(
-                            "Review the draft and resolve its structural or ambiguity diagnostics before acceptance.",
+                            d.ir
+                              ? d.diagnostics.some(
+                                  (issue) => issue.severity === "error",
+                                )
+                                ? "Resolve the draft errors before acceptance."
+                                : "Review the draft notes. Select explicit decision routes in Simulate before running."
+                              : "Add the requested details to your description, then extract again.",
                           );
                       })
                     }
@@ -889,6 +1002,14 @@ export default function App() {
                 {generationError && (
                   <div className="alert error" role="alert">
                     {generationError}
+                  </div>
+                )}
+                {generationDiagnostics.length > 0 && (
+                  <div className="alert" role="status">
+                    <div>
+                      <strong>Draft review notes</strong>
+                      {diagnosticList(generationDiagnostics)}
+                    </div>
                   </div>
                 )}
                 {draft && (
@@ -991,6 +1112,15 @@ export default function App() {
               </div>
               {section === "Model" && (
                 <>
+                  {model.diagnostics.some(
+                    (d) => d.code === "flattened_subprocess",
+                  ) && (
+                    <p className="method-note">
+                      Analysis uses expanded subprocess steps with their
+                      original IDs. The source XML, subprocess definitions, and
+                      original export are preserved.
+                    </p>
+                  )}
                   <div className="model-layout">
                     <Diagram
                       xml={
@@ -1020,7 +1150,9 @@ export default function App() {
                             <dt>Source duration</dt>
                             <dd>
                               {num(selectedNode.duration)}{" "}
-                              <small>scenario unit</small>
+                              <small>
+                                {model.ir.time_unit || "time units"}
+                              </small>
                             </dd>
                             <dt>Resource role</dt>
                             <dd>{selectedNode.role || "Unknown"}</dd>
@@ -1161,7 +1293,7 @@ export default function App() {
                         <div>
                           <h2>Structure valid · supported subset</h2>
                           <p>
-                            Bounded verification:{" "}
+                            Verification:{" "}
                             <strong>
                               {validation.verification.status.replaceAll(
                                 "_",
@@ -1173,6 +1305,15 @@ export default function App() {
                         <Status value={validation.verification.status} />
                       </div>
                       <div className="facts">
+                        <div>
+                          <span>Analysis method</span>
+                          <strong>
+                            {validation.verification.method ===
+                            "structural_reduction"
+                              ? "Matched gateway reduction"
+                              : "Bounded token exploration"}
+                          </strong>
+                        </div>
                         <div>
                           <span>Explored markings</span>
                           <strong className="mono">
@@ -1194,6 +1335,16 @@ export default function App() {
                           </strong>
                         </div>
                       </div>
+                      {validation.complexity && (
+                        <p className="method-note">
+                          {validation.complexity.tasks} tasks ·{" "}
+                          {validation.complexity.flows} flows ·{" "}
+                          {validation.complexity.parallel_splits} parallel
+                          splits · {validation.complexity.exclusive_splits}{" "}
+                          exclusive splits · {validation.complexity.end_events}{" "}
+                          end events.
+                        </p>
+                      )}
                       <p className="method-note">
                         {validation.verification.scope}. Full workflow-net
                         soundness is not claimed.
@@ -1334,7 +1485,7 @@ export default function App() {
                               below. Form edits above apply to your next
                               experiment.{" "}
                               {result.optimization &&
-                                `Solver ${result.optimization.status}; bound ${num(result.optimization.best_bound)}; gap ${result.optimization.relative_gap == null ? "unknown" : `${num(result.optimization.relative_gap * 100)}%`}; limit ${result.optimization.time_limit_seconds}s.`}{" "}
+                                `Method ${result.optimization.method?.replaceAll("_", " ") || "CP-SAT"}; status ${result.optimization.status}; bound ${num(result.optimization.best_bound)}; gap ${result.optimization.relative_gap == null ? "unknown" : `${num(result.optimization.relative_gap * 100)}%`}; search limit ${result.optimization.time_limit_seconds}s.`}{" "}
                               No structural BPMN change. Throughput and
                               real-world savings are not measured.
                             </p>

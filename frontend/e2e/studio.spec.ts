@@ -202,9 +202,57 @@ test("optional NLP draft requires explicit review with mocked extraction", async
   ).toBeVisible();
 });
 
+test("XOR branches without conditions import and run with explicit route selection", async ({
+  page,
+  request,
+}) => {
+  const samples = await (await request.get("/api/v1/samples")).json();
+  const sample = samples.find((item: { key: string }) => item.key === "loan");
+  const xml = sample.xml
+    .replace(
+      /<bpmn:conditionExpression>[\s\S]*?<\/bpmn:conditionExpression>/g,
+      "",
+    )
+    .replace(/ default="[^"]+"/g, "");
+  await request.post("/api/v1/projects", {
+    data: { name: "Explicit decision routes" },
+  });
+  await page.goto("/");
+  await page
+    .getByLabel("Import BPMN file")
+    .setInputFiles({
+      name: "unlabeled-xor.bpmn",
+      mimeType: "application/xml",
+      buffer: Buffer.from(xml),
+    });
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Loan review" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "BPMN structural inspection" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Simulate", exact: true }).click();
+  await expect(page.getByLabel("decision route")).toHaveValue("");
+  await page.getByLabel("decision route").selectOption("flow_4");
+  await page
+    .getByRole("button", { name: "Run baseline simulation", exact: true })
+    .click();
+  await expect(page.locator(".experiment .status-succeeded")).toBeVisible();
+  await expect(page.locator(".timeline tbody")).toContainText(
+    "Send decline notice",
+  );
+  await expect(page.locator(".timeline tbody")).not.toContainText(
+    "Prepare approved offer",
+  );
+});
+
 test("unsupported file gets actionable diagnostics and does not save a model", async ({
   page,
+  request,
 }) => {
+  await request.post("/api/v1/projects", {
+    data: { name: "Unsupported model assessment" },
+  });
   await page.goto("/");
   const xml =
     '<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"><process id="p"><subProcess id="nested"/></process></definitions>';
@@ -214,7 +262,127 @@ test("unsupported file gets actionable diagnostics and does not save a model", a
     buffer: Buffer.from(xml),
   });
   await expect(page.getByRole("alert")).toContainText(
-    "Unsupported BPMN semantics",
+    "Unsupported embedded subprocess",
   );
   await expect(page.getByRole("alert")).toContainText("nested");
+  await expect(
+    page.getByRole("region", { name: "BPMN structural inspection" }),
+  ).toContainText("Structural inspection only");
+  await page.screenshot({
+    path: "../docs/evidence/complex-inspection.png",
+    fullPage: true,
+  });
+});
+
+test("nested subprocess import validates and simulates its selected route", async ({
+  page,
+  request,
+}) => {
+  await request.post("/api/v1/projects", {
+    data: { name: "Nested subprocess demonstration" },
+  });
+  await page.goto("/");
+  await page
+    .getByLabel("Import BPMN file")
+    .setInputFiles("../examples/complex/nested-order.bpmn");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: "Order fulfillment with nested subprocesses",
+    }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: "../docs/evidence/nested-model.png",
+    fullPage: true,
+  });
+  await page
+    .getByRole("button", { name: "Validate model", exact: true })
+    .click();
+  await expect(page.getByText("6 tasks ·", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Configure simulation" }).click();
+  await expect(page.getByLabel("Time unit", { exact: true })).toHaveValue(
+    "minutes",
+  );
+  await page.getByLabel("stock route").selectOption("stock_yes");
+  await page
+    .getByRole("button", { name: "Run baseline simulation", exact: true })
+    .click();
+  await expect(page.locator(".experiment .status-succeeded")).toBeVisible();
+  await expect(page.locator(".metric-strip")).toContainText("35");
+});
+
+test("draft extraction shows pending state and a local provider failure", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/health", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.provider.configured = true;
+    await route.fulfill({ json: body });
+  });
+  let finish: (() => Promise<void>) | undefined;
+  await page.route("**/api/v1/generation/extract", (route) => {
+    finish = () =>
+      route.fulfill({
+        status: 504,
+        json: { error: { message: "Provider was unreachable or timed out." } },
+      });
+  });
+  await page.goto("/");
+  await page
+    .getByLabel("Process description", { exact: true })
+    .fill("Start → Receive order → End");
+  await page.getByRole("button", { name: "Extract review draft" }).click();
+  await expect(
+    page.getByRole("button", { name: "Extracting draft" }),
+  ).toBeDisabled();
+  await expect(page.locator(".generation").getByRole("status")).toContainText(
+    "Waiting for the AI provider",
+  );
+  await finish!();
+  await expect(page.locator(".generation").getByRole("alert")).toContainText(
+    "Provider was unreachable",
+  );
+  await expect(
+    page.getByRole("button", { name: "Extract review draft" }),
+  ).toBeEnabled();
+});
+
+test("vague prompts show clarification without a fabricated draft", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/health", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.provider.configured = true;
+    await route.fulfill({ json: body });
+  });
+  await page.route("**/api/v1/generation/extract", (route) =>
+    route.fulfill({
+      json: {
+        ir: null,
+        diagnostics: [
+          {
+            code: "clarification_required",
+            message: "Which tasks should the process contain?",
+            severity: "warning",
+          },
+        ],
+        clarification_questions: ["Which tasks should the process contain?"],
+        xml_preview: null,
+        review_required: true,
+      },
+    }),
+  );
+  await page.goto("/");
+  await page
+    .getByLabel("Process description", { exact: true })
+    .fill("make it better");
+  await page.getByRole("button", { name: "Extract review draft" }).click();
+  await expect(page.locator(".generation")).toContainText(
+    "Which tasks should the process contain?",
+  );
+  await expect(
+    page.getByRole("button", { name: "Accept reviewed model" }),
+  ).toHaveCount(0);
 });

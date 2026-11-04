@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:studio="urn:optimodel:studio:1" id="NestedOrderDefinitions" targetNamespace="urn:optimodel:examples">
+  <bpmn:process id="NestedOrder" name="Order fulfillment with nested subprocesses" isExecutable="false">
+    <bpmn:extensionElements><studio:process time_unit="minutes"/><studio:assumption>Illustrative task durations; one resource slot per role. Stock availability is an explicit scenario choice.</studio:assumption></bpmn:extensionElements>
+    <bpmn:startEvent id="start" name="Order received"/>
+    <bpmn:userTask id="receive" name="Register order"><bpmn:extensionElements><studio:metadata duration="5" role="Sales" provenance="example"/></bpmn:extensionElements></bpmn:userTask>
+    <bpmn:exclusiveGateway id="stock" name="Stock available?" default="stock_no"/>
+    <bpmn:subProcess id="fulfillment" name="Fulfill order">
+      <bpmn:startEvent id="fulfillment_start"/>
+      <bpmn:parallelGateway id="prepare_split"/>
+      <bpmn:manualTask id="verify_stock" name="Verify and reserve stock"><bpmn:extensionElements><studio:metadata duration="10" role="Warehouse" provenance="example"/></bpmn:extensionElements></bpmn:manualTask>
+      <bpmn:businessRuleTask id="invoice" name="Prepare invoice"><bpmn:extensionElements><studio:metadata duration="5" role="Accounts" provenance="example"/></bpmn:extensionElements></bpmn:businessRuleTask>
+      <bpmn:parallelGateway id="prepare_join"/>
+      <bpmn:subProcess id="shipping" name="Pack and ship">
+        <bpmn:startEvent id="shipping_start"/>
+        <bpmn:manualTask id="pack" name="Pack order"><bpmn:extensionElements><studio:metadata duration="15" role="Warehouse" provenance="example"/></bpmn:extensionElements></bpmn:manualTask>
+        <bpmn:sendTask id="dispatch" name="Dispatch order"><bpmn:extensionElements><studio:metadata duration="5" role="Dispatch" provenance="example"/></bpmn:extensionElements></bpmn:sendTask>
+        <bpmn:endEvent id="shipping_end"/>
+        <bpmn:sequenceFlow id="ship_1" sourceRef="shipping_start" targetRef="pack"/>
+        <bpmn:sequenceFlow id="ship_2" sourceRef="pack" targetRef="dispatch"/>
+        <bpmn:sequenceFlow id="ship_3" sourceRef="dispatch" targetRef="shipping_end"/>
+      </bpmn:subProcess>
+      <bpmn:endEvent id="fulfillment_end"/>
+      <bpmn:sequenceFlow id="prep_1" sourceRef="fulfillment_start" targetRef="prepare_split"/>
+      <bpmn:sequenceFlow id="prep_2" sourceRef="prepare_split" targetRef="verify_stock"/>
+      <bpmn:sequenceFlow id="prep_3" sourceRef="prepare_split" targetRef="invoice"/>
+      <bpmn:sequenceFlow id="prep_4" sourceRef="verify_stock" targetRef="prepare_join"/>
+      <bpmn:sequenceFlow id="prep_5" sourceRef="invoice" targetRef="prepare_join"/>
+      <bpmn:sequenceFlow id="prep_6" sourceRef="prepare_join" targetRef="shipping"/>
+      <bpmn:sequenceFlow id="prep_7" sourceRef="shipping" targetRef="fulfillment_end"/>
+    </bpmn:subProcess>
+    <bpmn:userTask id="notify" name="Notify customer of unavailable stock"><bpmn:extensionElements><studio:metadata duration="3" role="Sales" provenance="example"/></bpmn:extensionElements></bpmn:userTask>
+    <bpmn:endEvent id="shipped" name="Order shipped"/>
+    <bpmn:endEvent id="unavailable" name="Unavailable stock reported"/>
+    <bpmn:sequenceFlow id="order_1" sourceRef="start" targetRef="receive"/>
+    <bpmn:sequenceFlow id="order_2" sourceRef="receive" targetRef="stock"/>
+    <bpmn:sequenceFlow id="stock_yes" sourceRef="stock" targetRef="fulfillment"><bpmn:conditionExpression>Stock available</bpmn:conditionExpression></bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="stock_no" sourceRef="stock" targetRef="notify"/>
+    <bpmn:sequenceFlow id="order_3" sourceRef="fulfillment" targetRef="shipped"/>
+    <bpmn:sequenceFlow id="order_4" sourceRef="notify" targetRef="unavailable"/>
+  </bpmn:process>
+</bpmn:definitions>

@@ -1,3 +1,5 @@
+> Historical Studio 3.0 snapshot. For the current expanded scope, verification methods and new regression/scale evidence, read [the Studio 3.1 upgrade](complex-model-upgrade.md).
+
 # Engineering audit
 
 Inspected on 2026-11-04. Source branch: `main`; working tree was clean. Work branch: `feature/optimodel-studio`. No remote push or deployment is authorized.

@@ -1,10 +1,10 @@
-"""Fixed-resource RCPSP with CP-SAT. XOR trace optimization is deliberately unavailable."""
+"""Fixed-resource RCPSP with CP-SAT over an explicitly selected execution trace."""
 
-import networkx as nx
+from collections import defaultdict
 
-from .bpmn import graph
 from .domain import Scenario, Workflow
-from .simulation import metrics, resource_slots, settings, validate_schedule
+from .graph_tools import execution_graph, task_predecessors
+from .simulation import choose_routes, metrics, resource_slots, settings, validate_schedule
 
 
 def optimize(workflow: Workflow, config: Scenario, baseline: dict) -> dict:
@@ -20,22 +20,46 @@ def optimize(workflow: Workflow, config: Scenario, baseline: dict) -> dict:
         "resources": [r.model_dump() for r in config.resources],
         "bpmn_changed": False,
     }
-    if any(n.kind == "exclusiveGateway" for n in workflow.nodes):
-        return {
-            **base,
-            "explanation": "XOR models can be simulated with explicit routing. Deterministic scheduling optimization is unavailable for them.",
-        }
-    task_settings = settings(workflow, config)
-    if any(abs(s.duration * 1000 - round(s.duration * 1000)) > 1e-7 for s in task_settings.values()):
+    routes = choose_routes(workflow, config)
+    g = execution_graph(workflow, routes)
+    task_settings = {ident: s for ident, s in settings(workflow, config).items() if ident in g}
+    predecessors = task_predecessors(workflow, g)
+    base["scope"] = (
+        "Fixed-resource scheduling for the same selected trace; routing alternatives are not optimized."
+    )
+    if baseline.get("selected_routes", {}) != routes:
+        raise ValueError("Baseline routing does not match the optimization scenario.")
+    validate_schedule(workflow, config, baseline["schedule"], expected_ids=set(task_settings))
+    if any(
+        round(s.duration * 1000) < 1 or abs(s.duration * 1000 - round(s.duration * 1000)) > 1e-7
+        for s in task_settings.values()
+    ):
         return {
             **base,
             "explanation": "CP-SAT supports durations with up to three decimal places; durations were not rounded.",
         }
+    scale = 1000
+    durations = {t: round(s.duration * scale) for t, s in task_settings.items()}
+    longest, workloads = {}, defaultdict(int)
+    for ident in predecessors:  # predecessor map is in topological order
+        longest[ident] = durations[ident] + max((longest[p] for p in predecessors[ident]), default=0)
+        workloads[task_settings[ident].role] += durations[ident]
+    bound = max(
+        [*longest.values(), *[(workloads[r.role] + r.capacity - 1) // r.capacity for r in config.resources]]
+    )
+    if bound == round(baseline["metrics"]["makespan"] * scale):
+        return {
+            **base,
+            "status": "optimal",
+            "method": "analytical_lower_bound",
+            "best_bound": bound / scale,
+            "relative_gap": 0.0,
+            "explanation": "The independently validated baseline attains a proven precedence/resource lower bound for this selected trace. No schedule can finish earlier under these assumptions; solver search was unnecessary.",
+        }
+    base["method"] = "cp_sat"
     from ortools.sat.python import cp_model
 
     model = cp_model.CpModel()
-    scale = 1000
-    durations = {t: round(s.duration * scale) for t, s in task_settings.items()}
     horizon = sum(durations.values())
     starts, ends, choices, intervals = {}, {}, {}, {}
     slots = resource_slots(config)
@@ -57,9 +81,8 @@ def optimize(workflow: Workflow, config: Scenario, baseline: dict) -> dict:
         model.add_exactly_one(assignments)
         model.add_hint(starts[ident], round(baseline_rows[ident]["start"] * scale))
         model.add_hint(ends[ident], round(baseline_rows[ident]["finish"] * scale))
-    g = graph(workflow)
     for ident in task_settings:
-        for pred in nx.ancestors(g, ident) & set(task_settings):
+        for pred in predecessors[ident]:
             model.add(starts[ident] >= ends[pred])
     for slot_intervals in intervals.values():
         model.add_no_overlap(slot_intervals)
@@ -89,9 +112,7 @@ def optimize(workflow: Workflow, config: Scenario, baseline: dict) -> dict:
     rows = []
     for ident, setting in task_settings.items():
         start, finish = solver.value(starts[ident]) / scale, solver.value(ends[ident]) / scale
-        ready = max(
-            (solver.value(ends[p]) / scale for p in nx.ancestors(g, ident) & set(task_settings)), default=0
-        )
+        ready = max((solver.value(ends[p]) / scale for p in predecessors[ident]), default=0)
         slot = next(slot for slot in slots[setting.role] if solver.value(choices[ident, slot]))
         rows.append(
             {
@@ -112,7 +133,7 @@ def optimize(workflow: Workflow, config: Scenario, baseline: dict) -> dict:
         "metrics": metrics(rows, config),
         "schedule": sorted(rows, key=lambda r: (r["start"], r["id"])),
         "seed": config.seed,
-        "selected_routes": {},
+        "selected_routes": routes,
         "warnings": baseline["warnings"],
     }
     improved = candidate["metrics"]["makespan"] < baseline["metrics"]["makespan"] - 1e-7

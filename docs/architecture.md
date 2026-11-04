@@ -1,3 +1,5 @@
+> Historical Studio 3.0 snapshot. For the current expanded scope, verification methods and new regression/scale evidence, read [the Studio 3.1 upgrade](complex-model-upgrade.md).
+
 # Architecture
 
 OptiModel Studio is a local process engineering application. It models and experiments; it does not execute business transactions or deploy a process engine. There is no account requirement, cloud backend, telemetry, CDN runtime dependency, or mandatory AI subscription.

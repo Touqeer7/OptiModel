@@ -70,6 +70,46 @@ def test_full_journey_and_run_artifacts(client):
     assert client.get("/download-report").status_code == 410
 
 
+def test_unconditional_xor_file_imports_and_requires_explicit_scenario_route(client):
+    from backend.app.bpmn import serialize
+    from backend.app.domain import Workflow
+
+    data = sample("loan")
+    workflow = Workflow.model_validate(data["ir"])
+    for edge in workflow.edges:
+        edge.condition, edge.is_default = None, False
+    xml = serialize(workflow)
+    p = project(client)
+    response = client.post(
+        f"/api/v1/projects/{p['id']}/upload", files={"file": ("unlabeled.bpmn", xml.encode())}
+    )
+    assert response.status_code == 201, response.text
+    imported = response.json()
+    assert imported["xml"] == xml
+    assert (
+        len(
+            [
+                d
+                for d in imported["diagnostics"]
+                if d["code"] == "missing_condition" and d["severity"] == "warning"
+            ]
+        )
+        == 2
+    )
+    checked = client.post(f"/api/v1/models/{imported['id']}/validate").json()
+    assert checked["verification"]["status"] == "no_counterexample"
+    config = data["config"]
+    config["routes"], config["probabilities"] = {}, {}
+    blocked = client.post(
+        f"/api/v1/projects/{p['id']}/runs", json={"model_id": imported["id"], "config": config}
+    )
+    assert blocked.status_code == 422
+    assert "explicitly select" in blocked.json()["error"]["message"]
+    config["routes"] = {"decision": "flow_4"}
+    result = complete(client, start(client, p["id"], imported["id"], config)["id"])
+    assert result["result"]["baseline"]["metrics"]["makespan"] == 5
+
+
 def test_history_independent_after_restart(tmp_path):
     with TestClient(create_app(tmp_path)) as client:
         ids = []
@@ -129,7 +169,7 @@ def test_version_immutability_and_project_ownership(client):
         ("model.bpmn", b"<broken>", 422),
         ("model.xml", b"\xff\xff", 422),
         ("xxe.xml", b'<!DOCTYPE a [<!ENTITY x SYSTEM "file:///secrets">]><definitions/>', 422),
-        ("big.xml", b"x" * 1_000_001, 413),
+        ("big.xml", b"x" * 10_000_001, 413),
     ],
 )
 def test_upload_bounds_and_content(client, filename, content, status):
@@ -146,7 +186,7 @@ def test_origin_body_and_security_headers(client):
     )
     assert response.status_code == 403
     assert not client.get("/api/v1/projects").json()
-    assert client.post("/api/v1/projects", content=b"x" * 1_100_001).status_code == 413
+    assert client.post("/api/v1/projects", content=b"x" * 20_100_001).status_code == 413
     response = client.get("/api/v1/health")
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert "script-src 'self'" in response.headers["content-security-policy"]

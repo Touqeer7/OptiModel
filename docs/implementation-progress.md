@@ -1,3 +1,5 @@
+> Historical Studio 3.0 snapshot. For the current expanded scope, verification methods and new regression/scale evidence, read [the Studio 3.1 upgrade](complex-model-upgrade.md).
+
 # Implementation progress
 
 ## Completed checkpoints

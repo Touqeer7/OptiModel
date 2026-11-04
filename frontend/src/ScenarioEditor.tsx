@@ -10,6 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { api } from "./api";
+import { convertTime } from "./format";
 import { isTask } from "./types";
 import type { Config, Model, Resource } from "./types";
 
@@ -90,7 +91,29 @@ export function ScenarioEditor({
           <select
             aria-label="Time unit"
             value={config.unit}
-            onChange={(e) => setConfig((c) => ({ ...c, unit: e.target.value }))}
+            onChange={(e) => {
+              const unit = e.target.value;
+              setConfig((c) => ({
+                ...c,
+                unit,
+                tasks: Object.fromEntries(
+                  Object.entries(c.tasks).map(([id, task]) => [
+                    id,
+                    {
+                      ...task,
+                      duration: convertTime(task.duration, c.unit, unit),
+                    },
+                  ]),
+                ),
+                resources: c.resources.map((r) => ({
+                  ...r,
+                  cost_per_unit:
+                    r.cost_per_unit == null
+                      ? null
+                      : convertTime(r.cost_per_unit, unit, c.unit),
+                })),
+              }));
+            }}
           >
             {["time units", "minutes", "hours", "days"].map((v) => (
               <option key={v}>{v}</option>
@@ -278,7 +301,16 @@ export function ScenarioEditor({
                     max="1000000"
                     step="0.001"
                     placeholder="Required"
-                    value={config.tasks[n.id]?.duration ?? n.duration ?? ""}
+                    value={
+                      config.tasks[n.id]?.duration ??
+                      (n.duration == null
+                        ? ""
+                        : convertTime(
+                            n.duration,
+                            model.ir.time_unit || "time units",
+                            config.unit,
+                          ))
+                    }
                     onChange={(e) =>
                       updateTask(n.id, "duration", Number(e.target.value))
                     }

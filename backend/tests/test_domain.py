@@ -76,7 +76,10 @@ def test_xor_executes_only_selected_branch(choice, executed, completion):
     result = simulate(w, c)
     assert {r["id"] for r in result["schedule"]} == {"review", executed}
     assert result["metrics"]["makespan"] == completion
-    assert optimize(w, c, result)["status"] == "unsupported"
+    optimized = optimize(w, c, result)
+    assert optimized["status"] == "optimal"
+    assert optimized["selected"]["selected_routes"] == {"decision": choice}
+    assert {r["id"] for r in optimized["selected"]["schedule"]} == {"review", executed}
 
 
 def test_xor_has_no_invented_probabilities_or_business_rule_execution():
@@ -89,6 +92,34 @@ def test_xor_has_no_invented_probabilities_or_business_rule_execution():
         seed=17,
     )
     assert simulate(w, c) == simulate(w, c)
+
+
+@pytest.mark.parametrize("branch_metadata", ["unnamed", "named", "default"])
+def test_xor_without_conditions_imports_with_warnings_and_requires_routing(branch_metadata):
+    workflow = Workflow.model_validate(sample("loan")["ir"])
+    branches = [e for e in workflow.edges if e.source == "decision"]
+    for edge in branches:
+        edge.condition = None
+        edge.is_default = False
+        edge.name = ""
+    if branch_metadata == "named":
+        branches[0].name, branches[1].name = "Yes", "No"
+    if branch_metadata == "default":
+        branches[1].is_default = True
+    assert not validate(workflow)
+    restored, findings = parse(serialize(workflow))
+    warnings = [d for d in findings if d.code == "missing_condition"]
+    assert len(warnings) == (1 if branch_metadata == "default" else 2)
+    assert all(d.severity == "warning" for d in warnings)
+    assert [e.model_dump() for e in restored.edges] == [e.model_dump() for e in workflow.edges]
+    assert verify(restored)["status"] == "no_counterexample"
+    config = Scenario(resources=[Resource(role="Analyst", capacity=1)])
+    with pytest.raises(DomainError, match="explicitly select"):
+        simulate(restored, config)
+    config.routes = {"decision": "flow_4"}
+    baseline = simulate(restored, config)
+    assert baseline["metrics"]["makespan"] == 5
+    assert optimize(restored, config, baseline)["status"] == "optimal"
 
 
 @pytest.mark.parametrize(
@@ -212,7 +243,7 @@ def test_solver_precision_limit_does_not_change_durations():
         ("<broken>", "Malformed"),
         ('<!DOCTYPE x [<!ENTITY x SYSTEM "file:///secret">]><definitions/>', "DTD"),
         ('<definitions xmlns="other"/>', "BPMN 2.0"),
-        ("x" * 1_000_001, "1 MB"),
+        ("x" * 10_000_001, "10 MB"),
     ],
 )
 def test_hostile_xml(xml, match):
@@ -311,8 +342,9 @@ def test_solver_timeout_falls_back_without_fabricated_improvement(monkeypatch):
             return cp_model.UNKNOWN
 
     monkeypatch.setattr(cp_model, "CpSolver", TimedOut)
-    w = sequence()
-    c = config()
+    data = sample("operations")
+    w = Workflow.model_validate(data["ir"])
+    c = Scenario.model_validate(data["config"])
     baseline = simulate(w, c)
     result = optimize(w, c, baseline)
     assert result["status"] == "timeout"

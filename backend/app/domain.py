@@ -4,10 +4,33 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .limits import MAX_EDGES, MAX_NODES
+
 NodeKind = Literal[
-    "startEvent", "endEvent", "task", "userTask", "serviceTask", "parallelGateway", "exclusiveGateway"
+    "startEvent",
+    "endEvent",
+    "task",
+    "userTask",
+    "serviceTask",
+    "manualTask",
+    "sendTask",
+    "receiveTask",
+    "scriptTask",
+    "businessRuleTask",
+    "intermediateThrowEvent",
+    "parallelGateway",
+    "exclusiveGateway",
 ]
-TASK_KINDS = {"task", "userTask", "serviceTask"}
+TASK_KINDS = {
+    "task",
+    "userTask",
+    "serviceTask",
+    "manualTask",
+    "sendTask",
+    "receiveTask",
+    "scriptTask",
+    "businessRuleTask",
+}
 
 
 class Model(BaseModel):
@@ -48,10 +71,22 @@ class Edge(Model):
 class Workflow(Model):
     id: str = Field(min_length=1, max_length=100)
     name: str = Field(default="Untitled process", max_length=500)
-    nodes: list[Node] = Field(min_length=3, max_length=200)
-    edges: list[Edge] = Field(min_length=2, max_length=400)
+    nodes: list[Node] = Field(min_length=3, max_length=MAX_NODES)
+    edges: list[Edge] = Field(min_length=2, max_length=MAX_EDGES)
+    time_unit: Literal["time units", "minutes", "hours", "days"] = "time units"
     assumptions: list[str] = Field(default_factory=list, max_length=100)
     ambiguities: list[str] = Field(default_factory=list, max_length=100)
+
+
+class Clarification(Model):
+    clarification_questions: list[str] = Field(min_length=1, max_length=10)
+
+    @field_validator("clarification_questions")
+    @classmethod
+    def bounded_questions(cls, questions):
+        if any(not q.strip() or len(q) > 1000 for q in questions):
+            raise ValueError("Use nonempty clarification questions of at most 1,000 characters.")
+        return questions
 
 
 class Resource(Model):
@@ -69,10 +104,10 @@ class TaskSetting(Model):
 class Scenario(Model):
     unit: Literal["time units", "minutes", "hours", "days"] = "time units"
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
-    resources: list[Resource] = Field(min_length=1, max_length=20)
-    tasks: dict[str, TaskSetting] = Field(default_factory=dict, max_length=200)
-    routes: dict[str, str] = Field(default_factory=dict, max_length=100)
-    probabilities: dict[str, dict[str, float]] = Field(default_factory=dict, max_length=100)
+    resources: list[Resource] = Field(min_length=1, max_length=64)
+    tasks: dict[str, TaskSetting] = Field(default_factory=dict, max_length=MAX_NODES)
+    routes: dict[str, str] = Field(default_factory=dict, max_length=MAX_NODES)
+    probabilities: dict[str, dict[str, float]] = Field(default_factory=dict, max_length=MAX_NODES)
     solver_seconds: float = Field(default=5, ge=0.01, le=15)
 
     @field_validator("resources")

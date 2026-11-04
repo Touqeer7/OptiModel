@@ -21,6 +21,7 @@ export interface Workflow {
   edges: Edge[];
   assumptions: string[];
   ambiguities: string[];
+  time_unit?: string;
 }
 export interface Diagnostic {
   code?: string;
@@ -61,6 +62,36 @@ export interface Model {
   xml: string;
   ir: Workflow;
   diagnostics: Diagnostic[];
+  complexity?: Complexity;
+}
+export interface Complexity {
+  nodes: number;
+  flows: number;
+  tasks: number;
+  exclusive_splits: number;
+  parallel_splits: number;
+  end_events: number;
+  graph_depth: number;
+  max_layer_width: number;
+  scope: string;
+}
+export interface Inspection {
+  notice: string;
+  processes: number;
+  nodes: number;
+  flows: number;
+  cyclic_regions: number;
+  scopes: {
+    path: string;
+    id: string;
+    name: string;
+    kind: string;
+    nodes: number;
+    flows: number;
+    cyclic_regions: number;
+  }[];
+  diagnostics: Diagnostic[];
+  reference_issues: Diagnostic[];
 }
 export interface Sample {
   key: string;
@@ -71,6 +102,7 @@ export interface Sample {
   config: Config;
 }
 export interface Verification {
+  method?: string;
   status: string;
   soundness: string;
   states: number;
@@ -83,6 +115,7 @@ export interface Verification {
   dead_transitions: string[];
 }
 export interface Validation {
+  complexity?: Complexity;
   structural: string;
   supported: boolean;
   diagnostics: Diagnostic[];
@@ -122,6 +155,7 @@ export interface Simulation {
   selected_routes: Record<string, string>;
 }
 export interface Optimization {
+  method?: string;
   status: string;
   selected: Simulation;
   improvement_pct: number;
@@ -154,6 +188,9 @@ export interface Run {
   error: string | null;
 }
 export interface Health {
+  capabilities?: {
+    limits: { xml_bytes: number; prompt_characters: number; nodes: number };
+  };
   provider: {
     configured: boolean;
     model: string | null;
@@ -162,10 +199,21 @@ export interface Health {
   };
 }
 export interface Draft {
-  ir: Workflow;
+  extraction_attempts?: number;
+  ir: Workflow | null;
+  clarification_questions?: string[];
   diagnostics: Diagnostic[];
   review_required: boolean;
   xml_preview: string | null;
 }
 export const isTask = (n: Node) =>
-  ["task", "userTask", "serviceTask"].includes(n.kind);
+  [
+    "task",
+    "userTask",
+    "serviceTask",
+    "manualTask",
+    "sendTask",
+    "receiveTask",
+    "scriptTask",
+    "businessRuleTask",
+  ].includes(n.kind);

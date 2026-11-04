@@ -137,3 +137,161 @@ def test_unknown_timing_and_extracted_provenance_round_trip(configured):
     restored, _ = parse(draft["xml_preview"])
     assert restored.assumptions == ir["assumptions"]
     assert all(node.duration is None for node in restored.nodes)
+
+
+def test_invalid_schema_is_repaired_once_with_original_requirements(configured):
+    ir = sample("order")["ir"]
+    broken = {**ir, "nodes": "not an array"}
+    with patch("urllib.request.OpenerDirector.open", side_effect=[response(broken), response(ir)]) as call:
+        result = gen.extract("Prepare invoice and inventory in parallel, then dispatch.")
+    assert call.call_count == 2
+    assert result["extraction_attempts"] == 2
+    assert result["ir"] == ir
+    payload = json.loads(call.call_args.args[0].data)
+    assert payload["messages"][1]["content"] == "Prepare invoice and inventory in parallel, then dispatch."
+    assert "Preserve the original" in payload["messages"][-1]["content"]
+    assert "test-secret" not in payload["messages"][-1]["content"]
+
+
+def test_invalid_topology_is_repaired_without_fabricated_fallback(configured):
+    ir = sample("order")["ir"]
+    broken = json.loads(json.dumps(ir))
+    broken["edges"][0]["target"] = "missing"
+    with patch("urllib.request.OpenerDirector.open", side_effect=[response(broken), response(ir)]):
+        result = gen.extract("Stated process")
+    assert result["extraction_attempts"] == 2
+    assert not result["diagnostics"]
+
+
+def test_repair_does_not_clear_material_ambiguity(configured):
+    ir = sample("order")["ir"]
+    ir["ambiguities"] = ["A retry loop was requested; cyclic execution is not supported."]
+    with patch("urllib.request.OpenerDirector.open", return_value=response(ir)) as call:
+        result = gen.extract("Retry inventory until available.")
+    assert call.call_count == 1
+    assert result["ir"] is None
+    assert result["clarification_questions"] == ir["ambiguities"]
+    assert result["xml_preview"] is None
+
+
+@pytest.mark.parametrize("wrapper", ["fenced", "text_blocks"])
+def test_common_provider_content_formats(configured, wrapper):
+    ir = sample("order")["ir"]
+    content = (
+        "```json\n" + json.dumps(ir) + "\n```"
+        if wrapper == "fenced"
+        else [{"type": "text", "text": json.dumps(ir)}]
+    )
+    raw = json.dumps({"choices": [{"message": {"content": content}}]}).encode()
+    with patch("urllib.request.OpenerDirector.open", return_value=Response(raw)):
+        assert gen.extract("Stated process")["ir"] == ir
+
+
+def test_explicit_time_unit_survives_generated_xml(configured):
+    ir = sample("order")["ir"]
+    ir["time_unit"] = "minutes"
+    with patch("urllib.request.OpenerDirector.open", return_value=response(ir)):
+        result = gen.extract("Durations in minutes")
+    from backend.app.bpmn import parse
+
+    assert parse(result["xml_preview"])[0].time_unit == "minutes"
+
+
+def test_long_description_is_supported_by_api(configured, client):
+    ir = sample("order")["ir"]
+    with patch("urllib.request.OpenerDirector.open", return_value=response(ir)):
+        result = client.post("/api/v1/generation/extract", json={"prompt": "Process requirements. " * 1000})
+    assert result.status_code == 200, result.text
+
+
+def test_oversized_description_rejected_before_provider_call(configured):
+    with patch("urllib.request.OpenerDirector.open") as call, pytest.raises(ValueError):
+        gen.extract("x" * 60_001)
+    call.assert_not_called()
+
+
+def test_truncated_provider_output_has_actionable_error(configured):
+    raw = json.dumps({"choices": [{"finish_reason": "length", "message": {"content": "{}"}}]}).encode()
+    with patch("urllib.request.OpenerDirector.open", return_value=Response(raw)) as call:
+        with pytest.raises(gen.ProviderError, match="truncated"):
+            gen.extract("Large description")
+    assert call.call_count == 1
+
+
+def test_provider_response_budget_is_enforced_before_repair(configured):
+    with patch(
+        "urllib.request.OpenerDirector.open", return_value=Response(b"x" * (gen.MAX_PROVIDER_BYTES + 1))
+    ) as call:
+        with pytest.raises(gen.ProviderError, match="size limit"):
+            gen.extract("Process description")
+    assert call.call_count == 1
+
+
+def test_generation_concurrency_has_a_clear_busy_response(configured):
+    assert gen.GENERATION_SLOTS.acquire(blocking=False)
+    assert gen.GENERATION_SLOTS.acquire(blocking=False)
+    try:
+        with pytest.raises(gen.ProviderError, match="already running") as error:
+            gen.extract("Process description")
+        assert error.value.status == 429
+    finally:
+        gen.GENERATION_SLOTS.release()
+        gen.GENERATION_SLOTS.release()
+
+
+def test_vague_prompt_can_request_clarification_without_invented_work(configured, client):
+    questions = {
+        "clarification_questions": ["What steps should the process contain?", "What starts and completes it?"]
+    }
+    with patch("urllib.request.OpenerDirector.open", return_value=response(questions)) as call:
+        result = client.post("/api/v1/generation/extract", json={"prompt": "make a good process"})
+    assert result.status_code == 200, result.text
+    assert result.json()["ir"] is None
+    assert result.json()["clarification_questions"] == questions["clarification_questions"]
+    assert result.json()["xml_preview"] is None
+    assert call.call_count == 1
+
+
+def test_two_invalid_schema_responses_stop_without_saving(configured):
+    with patch("urllib.request.OpenerDirector.open", return_value=response({"nodes": "bad"})) as call:
+        with pytest.raises(gen.ProviderError, match="one repair attempt"):
+            gen.extract("Stated requirements")
+    assert call.call_count == 2
+
+
+def test_unrepaired_topology_returns_reviewable_diagnostics(configured):
+    ir = sample("order")["ir"]
+    ir["edges"][0]["target"] = "missing"
+    with patch("urllib.request.OpenerDirector.open", return_value=response(ir)) as call:
+        result = gen.extract("Stated requirements")
+    assert call.call_count == 2
+    assert result["xml_preview"] is None
+    assert any(d["code"] == "dangling_flow" for d in result["diagnostics"])
+
+
+def test_ai_gateway_deadlock_is_repaired_before_offering_xml(configured):
+    ir = sample("loan")["ir"]
+    bad = json.loads(json.dumps(ir))
+    next(n for n in bad["nodes"] if n["id"] == "merge")["kind"] = "parallelGateway"
+    with patch("urllib.request.OpenerDirector.open", side_effect=[response(bad), response(ir)]) as call:
+        result = gen.extract("Approve or decline after review.")
+    assert call.call_count == 2
+    assert result["verification"]["status"] == "no_counterexample"
+    assert result["xml_preview"] is not None
+
+
+def test_unspecified_xor_conditions_do_not_trigger_ai_repair_or_block_review(configured, client):
+    ir = sample("loan")["ir"]
+    for edge in ir["edges"]:
+        edge["condition"], edge["is_default"] = None, False
+    with patch("urllib.request.OpenerDirector.open", return_value=response(ir)) as call:
+        result = gen.extract("Review and follow one of the two explicitly selected routes.")
+    assert call.call_count == 1
+    assert result["xml_preview"] is not None
+    assert result["ir"] == ir
+    assert result["diagnostics"] and all(d["severity"] == "warning" for d in result["diagnostics"])
+    p = client.post("/api/v1/projects", json={"name": "Explicit routes"}).json()
+    accepted = client.post(
+        f"/api/v1/projects/{p['id']}/generation/accept", json={"ir": ir, "review_confirmed": True}
+    )
+    assert accepted.status_code == 201, accepted.text
