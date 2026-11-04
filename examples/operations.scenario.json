@@ -1,0 +1,15 @@
+{
+  "unit": "hours",
+  "seed": 42,
+  "resources": [
+    {
+      "role": "Technician",
+      "capacity": 2,
+      "cost_per_unit": 30.0
+    }
+  ],
+  "tasks": {},
+  "routes": {},
+  "probabilities": {},
+  "solver_seconds": 5
+}

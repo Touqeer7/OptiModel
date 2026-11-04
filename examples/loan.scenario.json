@@ -1,0 +1,17 @@
+{
+  "unit": "hours",
+  "seed": 42,
+  "resources": [
+    {
+      "role": "Analyst",
+      "capacity": 1,
+      "cost_per_unit": 40.0
+    }
+  ],
+  "tasks": {},
+  "routes": {
+    "decision": "flow_3"
+  },
+  "probabilities": {},
+  "solver_seconds": 5
+}

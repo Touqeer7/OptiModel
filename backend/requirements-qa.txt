@@ -1,0 +1,3 @@
+-r requirements-dev.txt
+# Optional PDF raster renderer used by scripts/benchmark.py; not needed by the application or tests.
+PyMuPDF==2.1

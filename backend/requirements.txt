@@ -1,0 +1,2 @@
+# Runtime entry points are pinned; requirements.lock pins their transitive dependency closure.
+-r requirements.lock

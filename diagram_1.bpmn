@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions
+    xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+    xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+    xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+    xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+    id="Definitions_Parallel"
+    targetNamespace="http://example.com/bpmn">
+
+  <bpmn:process id="Process_Parallel" name="Three Parallel Activities"
+                isExecutable="true">
+
+    <!-- Start Event -->
+    <bpmn:startEvent id="StartEvent_1" name="Start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <!-- Parallel Split -->
+    <bpmn:parallelGateway id="Gateway_Split" name="Parallel Split">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+      <bpmn:outgoing>Flow_4</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <!-- Parallel Task A -->
+    <bpmn:task id="Task_A" name="Task A (2 units)">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_5</bpmn:outgoing>
+    </bpmn:task>
+
+    <!-- Parallel Task B -->
+    <bpmn:task id="Task_B" name="Task B (3 units)">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+      <bpmn:outgoing>Flow_6</bpmn:outgoing>
+    </bpmn:task>
+
+    <!-- Parallel Task C -->
+    <bpmn:task id="Task_C" name="Task C (4 units)">
+      <bpmn:incoming>Flow_4</bpmn:incoming>
+      <bpmn:outgoing>Flow_7</bpmn:outgoing>
+    </bpmn:task>
+
+    <!-- Parallel Join -->
+    <bpmn:parallelGateway id="Gateway_Join" name="Parallel Join">
+      <bpmn:incoming>Flow_5</bpmn:incoming>
+      <bpmn:incoming>Flow_6</bpmn:incoming>
+      <bpmn:incoming>Flow_7</bpmn:incoming>
+      <bpmn:outgoing>Flow_8</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <!-- End Event -->
+    <bpmn:endEvent id="EndEvent_1" name="End">
+      <bpmn:incoming>Flow_8</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Sequence Flows -->
+    <bpmn:sequenceFlow id="Flow_1"
+        sourceRef="StartEvent_1" targetRef="Gateway_Split"/>
+
+    <bpmn:sequenceFlow id="Flow_2"
+        sourceRef="Gateway_Split" targetRef="Task_A"/>
+
+    <bpmn:sequenceFlow id="Flow_3"
+        sourceRef="Gateway_Split" targetRef="Task_B"/>
+
+    <bpmn:sequenceFlow id="Flow_4"
+        sourceRef="Gateway_Split" targetRef="Task_C"/>
+
+    <bpmn:sequenceFlow id="Flow_5"
+        sourceRef="Task_A" targetRef="Gateway_Join"/>
+
+    <bpmn:sequenceFlow id="Flow_6"
+        sourceRef="Task_B" targetRef="Gateway_Join"/>
+
+    <bpmn:sequenceFlow id="Flow_7"
+        sourceRef="Task_C" targetRef="Gateway_Join"/>
+
+    <bpmn:sequenceFlow id="Flow_8"
+        sourceRef="Gateway_Join" targetRef="EndEvent_1"/>
+
+  </bpmn:process>
+
+  <!-- BPMN Diagram Layout -->
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1"
+                      bpmnElement="Process_Parallel">
+
+      <!-- Start -->
+      <bpmndi:BPMNShape id="StartEvent_1_di"
+                        bpmnElement="StartEvent_1">
+        <dc:Bounds x="100" y="218" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Split Gateway -->
+      <bpmndi:BPMNShape id="Gateway_Split_di"
+                        bpmnElement="Gateway_Split"
+                        isMarkerVisible="true">
+        <dc:Bounds x="200" y="211" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Task A -->
+      <bpmndi:BPMNShape id="Task_A_di" bpmnElement="Task_A">
+        <dc:Bounds x="350" y="80" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Task B -->
+      <bpmndi:BPMNShape id="Task_B_di" bpmnElement="Task_B">
+        <dc:Bounds x="350" y="196" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Task C -->
+      <bpmndi:BPMNShape id="Task_C_di" bpmnElement="Task_C">
+        <dc:Bounds x="350" y="312" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Join Gateway -->
+      <bpmndi:BPMNShape id="Gateway_Join_di"
+                        bpmnElement="Gateway_Join"
+                        isMarkerVisible="true">
+        <dc:Bounds x="550" y="211" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+
+      <!-- End -->
+      <bpmndi:BPMNShape id="EndEvent_1_di"
+                        bpmnElement="EndEvent_1">
+        <dc:Bounds x="680" y="218" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Flow 1 -->
+      <bpmndi:BPMNEdge id="Flow_1_di" bpmnElement="Flow_1">
+        <di:waypoint x="136" y="236"/>
+        <di:waypoint x="200" y="236"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Split to Task A -->
+      <bpmndi:BPMNEdge id="Flow_2_di" bpmnElement="Flow_2">
+        <di:waypoint x="225" y="211"/>
+        <di:waypoint x="225" y="120"/>
+        <di:waypoint x="350" y="120"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Split to Task B -->
+      <bpmndi:BPMNEdge id="Flow_3_di" bpmnElement="Flow_3">
+        <di:waypoint x="250" y="236"/>
+        <di:waypoint x="350" y="236"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Split to Task C -->
+      <bpmndi:BPMNEdge id="Flow_4_di" bpmnElement="Flow_4">
+        <di:waypoint x="225" y="261"/>
+        <di:waypoint x="225" y="352"/>
+        <di:waypoint x="350" y="352"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Task A to Join -->
+      <bpmndi:BPMNEdge id="Flow_5_di" bpmnElement="Flow_5">
+        <di:waypoint x="470" y="120"/>
+        <di:waypoint x="575" y="120"/>
+        <di:waypoint x="575" y="211"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Task B to Join -->
+      <bpmndi:BPMNEdge id="Flow_6_di" bpmnElement="Flow_6">
+        <di:waypoint x="470" y="236"/>
+        <di:waypoint x="550" y="236"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Task C to Join -->
+      <bpmndi:BPMNEdge id="Flow_7_di" bpmnElement="Flow_7">
+        <di:waypoint x="470" y="352"/>
+        <di:waypoint x="575" y="352"/>
+        <di:waypoint x="575" y="261"/>
+      </bpmndi:BPMNEdge>
+
+      <!-- Join to End -->
+      <bpmndi:BPMNEdge id="Flow_8_di" bpmnElement="Flow_8">
+        <di:waypoint x="600" y="236"/>
+        <di:waypoint x="680" y="236"/>
+      </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</bpmn:definitions>

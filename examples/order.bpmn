@@ -1,0 +1,118 @@
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:studio="urn:optimodel:studio:1" id="StudioDefinitions" targetNamespace="urn:optimodel:studio:1">
+  <bpmn:process id="Process_order" name="Order fulfillment" isExecutable="false">
+    <bpmn:extensionElements>
+      <studio:assumption>All durations, staffing and rates are illustrative example assumptions.</studio:assumption>
+    </bpmn:extensionElements>
+    <bpmn:startEvent id="start" name="Order received">
+      <bpmn:outgoing>flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:parallelGateway id="split" name="Prepare in parallel">
+      <bpmn:incoming>flow_1</bpmn:incoming>
+      <bpmn:outgoing>flow_2</bpmn:outgoing>
+      <bpmn:outgoing>flow_3</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:userTask id="inventory" name="Verify inventory">
+      <bpmn:extensionElements>
+        <studio:metadata provenance="example" duration="4.0" role="Operations"/>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_2</bpmn:incoming>
+      <bpmn:outgoing>flow_4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:userTask id="invoice" name="Prepare invoice">
+      <bpmn:extensionElements>
+        <studio:metadata provenance="example" duration="7.0" role="Operations"/>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_3</bpmn:incoming>
+      <bpmn:outgoing>flow_5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:parallelGateway id="join" name="All preparation complete">
+      <bpmn:incoming>flow_4</bpmn:incoming>
+      <bpmn:incoming>flow_5</bpmn:incoming>
+      <bpmn:outgoing>flow_6</bpmn:outgoing>
+    </bpmn:parallelGateway>
+    <bpmn:serviceTask id="dispatch" name="Dispatch order">
+      <bpmn:extensionElements>
+        <studio:metadata provenance="example" duration="2.0" role="Operations"/>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_6</bpmn:incoming>
+      <bpmn:outgoing>flow_7</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="end" name="Order dispatched">
+      <bpmn:incoming>flow_7</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="flow_1" sourceRef="start" targetRef="split" name=""/>
+    <bpmn:sequenceFlow id="flow_2" sourceRef="split" targetRef="inventory" name=""/>
+    <bpmn:sequenceFlow id="flow_3" sourceRef="split" targetRef="invoice" name=""/>
+    <bpmn:sequenceFlow id="flow_4" sourceRef="inventory" targetRef="join" name=""/>
+    <bpmn:sequenceFlow id="flow_5" sourceRef="invoice" targetRef="join" name=""/>
+    <bpmn:sequenceFlow id="flow_6" sourceRef="join" targetRef="dispatch" name=""/>
+    <bpmn:sequenceFlow id="flow_7" sourceRef="dispatch" targetRef="end" name=""/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="StudioDiagram">
+    <bpmndi:BPMNPlane id="StudioPlane" bpmnElement="Process_order">
+      <bpmndi:BPMNShape id="DI_start" bpmnElement="start">
+        <dc:Bounds x="60" y="242.0" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_split" bpmnElement="split">
+        <dc:Bounds x="240" y="236.0" width="48" height="48"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_inventory" bpmnElement="inventory">
+        <dc:Bounds x="420" y="164.0" width="120" height="72"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_invoice" bpmnElement="invoice">
+        <dc:Bounds x="420" y="284.0" width="120" height="72"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_join" bpmnElement="join">
+        <dc:Bounds x="600" y="236.0" width="48" height="48"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_dispatch" bpmnElement="dispatch">
+        <dc:Bounds x="780" y="224.0" width="120" height="72"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_end" bpmnElement="end">
+        <dc:Bounds x="960" y="242.0" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="DI_flow_1" bpmnElement="flow_1">
+        <di:waypoint x="96" y="260.0"/>
+        <di:waypoint x="168.0" y="260.0"/>
+        <di:waypoint x="168.0" y="260.0"/>
+        <di:waypoint x="240" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_2" bpmnElement="flow_2">
+        <di:waypoint x="288" y="260.0"/>
+        <di:waypoint x="354.0" y="260.0"/>
+        <di:waypoint x="354.0" y="200.0"/>
+        <di:waypoint x="420" y="200.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_3" bpmnElement="flow_3">
+        <di:waypoint x="288" y="260.0"/>
+        <di:waypoint x="354.0" y="260.0"/>
+        <di:waypoint x="354.0" y="320.0"/>
+        <di:waypoint x="420" y="320.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_4" bpmnElement="flow_4">
+        <di:waypoint x="540" y="200.0"/>
+        <di:waypoint x="570.0" y="200.0"/>
+        <di:waypoint x="570.0" y="260.0"/>
+        <di:waypoint x="600" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_5" bpmnElement="flow_5">
+        <di:waypoint x="540" y="320.0"/>
+        <di:waypoint x="570.0" y="320.0"/>
+        <di:waypoint x="570.0" y="260.0"/>
+        <di:waypoint x="600" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_6" bpmnElement="flow_6">
+        <di:waypoint x="648" y="260.0"/>
+        <di:waypoint x="714.0" y="260.0"/>
+        <di:waypoint x="714.0" y="260.0"/>
+        <di:waypoint x="780" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_7" bpmnElement="flow_7">
+        <di:waypoint x="900" y="260.0"/>
+        <di:waypoint x="930.0" y="260.0"/>
+        <di:waypoint x="930.0" y="260.0"/>
+        <di:waypoint x="960" y="260.0"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

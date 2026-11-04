@@ -1,0 +1,70 @@
+{
+  "platform": "win32",
+  "python": "3.14.3",
+  "method": "one warm-process measurement per case; not a statistically characterized performance claim",
+  "benchmarks": [
+    {
+      "tasks": 10,
+      "xml_bytes": 8948,
+      "parse_ms": 1.507,
+      "verification_ms": 0.214,
+      "simulation_ms": 0.56,
+      "optimization_ms": 5.302,
+      "states": 13,
+      "verification_status": "no_counterexample",
+      "baseline_completion": 34.0,
+      "selected_completion": 34.0,
+      "solver_status": "optimal"
+    },
+    {
+      "tasks": 150,
+      "xml_bytes": 117086,
+      "parse_ms": 20.696,
+      "verification_ms": 8.7,
+      "simulation_ms": 17.887,
+      "optimization_ms": 678.131,
+      "states": 153,
+      "verification_status": "no_counterexample",
+      "baseline_completion": 594.0,
+      "selected_completion": 594.0,
+      "solver_status": "optimal"
+    }
+  ],
+  "sample": {
+    "name": "Resource-constrained operations",
+    "baseline": {
+      "makespan": 13.0,
+      "unit": "hours",
+      "completed_cases": 1,
+      "observed_throughput": null,
+      "total_wait": 2.0,
+      "mean_wait": 0.5,
+      "utilization_by_role": {
+        "Technician": 0.7692307692307693
+      },
+      "busy_labor_cost": 600.0,
+      "staffed_capacity_cost": 780.0,
+      "cost_unit": "configured currency",
+      "task_count": 4
+    },
+    "selected": {
+      "makespan": 11.0,
+      "unit": "hours",
+      "completed_cases": 1,
+      "observed_throughput": null,
+      "total_wait": 2.0,
+      "mean_wait": 0.5,
+      "utilization_by_role": {
+        "Technician": 0.9090909090909091
+      },
+      "busy_labor_cost": 600.0,
+      "staffed_capacity_cost": 660.0,
+      "cost_unit": "configured currency",
+      "task_count": 4
+    },
+    "solver_status": "optimal",
+    "bound": 11.0,
+    "improvement_pct": 15.384615384615385,
+    "pdf_pages": 4
+  }
+}

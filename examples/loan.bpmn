@@ -1,0 +1,122 @@
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:studio="urn:optimodel:studio:1" id="StudioDefinitions" targetNamespace="urn:optimodel:studio:1">
+  <bpmn:process id="Process_loan" name="Loan review" isExecutable="false">
+    <bpmn:extensionElements>
+      <studio:assumption>All durations, staffing and rates are illustrative example assumptions.</studio:assumption>
+    </bpmn:extensionElements>
+    <bpmn:startEvent id="start" name="Application received">
+      <bpmn:outgoing>flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="review" name="Review application">
+      <bpmn:extensionElements>
+        <studio:metadata provenance="example" duration="4.0" role="Analyst"/>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_1</bpmn:incoming>
+      <bpmn:outgoing>flow_2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:exclusiveGateway id="decision" name="Credit decision">
+      <bpmn:incoming>flow_2</bpmn:incoming>
+      <bpmn:outgoing>flow_3</bpmn:outgoing>
+      <bpmn:outgoing>flow_4</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:userTask id="approve" name="Prepare approved offer">
+      <bpmn:extensionElements>
+        <studio:metadata provenance="example" duration="3.0" role="Analyst"/>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_3</bpmn:incoming>
+      <bpmn:outgoing>flow_5</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="decline" name="Send decline notice">
+      <bpmn:extensionElements>
+        <studio:metadata provenance="example" duration="1.0" role="Analyst"/>
+      </bpmn:extensionElements>
+      <bpmn:incoming>flow_4</bpmn:incoming>
+      <bpmn:outgoing>flow_6</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="merge" name="Decision recorded">
+      <bpmn:incoming>flow_5</bpmn:incoming>
+      <bpmn:incoming>flow_6</bpmn:incoming>
+      <bpmn:outgoing>flow_7</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="end" name="Review complete">
+      <bpmn:incoming>flow_7</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="flow_1" sourceRef="start" targetRef="review" name=""/>
+    <bpmn:sequenceFlow id="flow_2" sourceRef="review" targetRef="decision" name=""/>
+    <bpmn:sequenceFlow id="flow_3" sourceRef="decision" targetRef="approve" name="Approved">
+      <bpmn:conditionExpression>approved</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="flow_4" sourceRef="decision" targetRef="decline" name="Declined">
+      <bpmn:conditionExpression>declined</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="flow_5" sourceRef="approve" targetRef="merge" name=""/>
+    <bpmn:sequenceFlow id="flow_6" sourceRef="decline" targetRef="merge" name=""/>
+    <bpmn:sequenceFlow id="flow_7" sourceRef="merge" targetRef="end" name=""/>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="StudioDiagram">
+    <bpmndi:BPMNPlane id="StudioPlane" bpmnElement="Process_loan">
+      <bpmndi:BPMNShape id="DI_start" bpmnElement="start">
+        <dc:Bounds x="60" y="242.0" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_review" bpmnElement="review">
+        <dc:Bounds x="240" y="224.0" width="120" height="72"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_decision" bpmnElement="decision">
+        <dc:Bounds x="420" y="236.0" width="48" height="48"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_approve" bpmnElement="approve">
+        <dc:Bounds x="600" y="164.0" width="120" height="72"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_decline" bpmnElement="decline">
+        <dc:Bounds x="600" y="284.0" width="120" height="72"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_merge" bpmnElement="merge">
+        <dc:Bounds x="780" y="236.0" width="48" height="48"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="DI_end" bpmnElement="end">
+        <dc:Bounds x="960" y="242.0" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="DI_flow_1" bpmnElement="flow_1">
+        <di:waypoint x="96" y="260.0"/>
+        <di:waypoint x="168.0" y="260.0"/>
+        <di:waypoint x="168.0" y="260.0"/>
+        <di:waypoint x="240" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_2" bpmnElement="flow_2">
+        <di:waypoint x="360" y="260.0"/>
+        <di:waypoint x="390.0" y="260.0"/>
+        <di:waypoint x="390.0" y="260.0"/>
+        <di:waypoint x="420" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_3" bpmnElement="flow_3">
+        <di:waypoint x="468" y="260.0"/>
+        <di:waypoint x="534.0" y="260.0"/>
+        <di:waypoint x="534.0" y="200.0"/>
+        <di:waypoint x="600" y="200.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_4" bpmnElement="flow_4">
+        <di:waypoint x="468" y="260.0"/>
+        <di:waypoint x="534.0" y="260.0"/>
+        <di:waypoint x="534.0" y="320.0"/>
+        <di:waypoint x="600" y="320.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_5" bpmnElement="flow_5">
+        <di:waypoint x="720" y="200.0"/>
+        <di:waypoint x="750.0" y="200.0"/>
+        <di:waypoint x="750.0" y="260.0"/>
+        <di:waypoint x="780" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_6" bpmnElement="flow_6">
+        <di:waypoint x="720" y="320.0"/>
+        <di:waypoint x="750.0" y="320.0"/>
+        <di:waypoint x="750.0" y="260.0"/>
+        <di:waypoint x="780" y="260.0"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="DI_flow_7" bpmnElement="flow_7">
+        <di:waypoint x="828" y="260.0"/>
+        <di:waypoint x="894.0" y="260.0"/>
+        <di:waypoint x="894.0" y="260.0"/>
+        <di:waypoint x="960" y="260.0"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

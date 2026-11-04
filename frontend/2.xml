@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:camunda="http://camunda.org/schema/1.0/bpmn"
+                  id="Definitions_ThreeTasks"
+                  targetNamespace="http://example.com/bpmn">
+
+  <bpmn:process id="Process_OrderFulfillment" name="Order Fulfillment Process" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" name="Order Received">
+      <bpmn:outgoing>Flow_Start_Split</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:parallelGateway id="Gateway_Split" name="Parallel Split">
+      <bpmn:incoming>Flow_Start_Split</bpmn:incoming>
+      <bpmn:outgoing>Flow_Split_TaskA</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Split_TaskB</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Split_TaskC</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:task id="Task_A" name="Task A: Verify Inventory">
+      <bpmn:documentation>duration: 2; resource: Worker_1</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="duration" value="2" />
+          <camunda:property name="resource" value="Worker_1" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Split_TaskA</bpmn:incoming>
+      <bpmn:outgoing>Flow_TaskA_Join</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="Task_B" name="Task B: Process Payment">
+      <bpmn:documentation>duration: 3; resource: Worker_2</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="duration" value="3" />
+          <camunda:property name="resource" value="Worker_2" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Split_TaskB</bpmn:incoming>
+      <bpmn:outgoing>Flow_TaskB_Join</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:task id="Task_C" name="Task C: Package Items">
+      <bpmn:documentation>duration: 4; resource: Worker_1</bpmn:documentation>
+      <bpmn:extensionElements>
+        <camunda:properties>
+          <camunda:property name="duration" value="4" />
+          <camunda:property name="resource" value="Worker_1" />
+        </camunda:properties>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Split_TaskC</bpmn:incoming>
+      <bpmn:outgoing>Flow_TaskC_Join</bpmn:outgoing>
+    </bpmn:task>
+
+    <bpmn:parallelGateway id="Gateway_Join" name="Parallel Join">
+      <bpmn:incoming>Flow_TaskA_Join</bpmn:incoming>
+      <bpmn:incoming>Flow_TaskB_Join</bpmn:incoming>
+      <bpmn:incoming>Flow_TaskC_Join</bpmn:incoming>
+      <bpmn:outgoing>Flow_Join_End</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:endEvent id="EndEvent_1" name="Order Dispatched">
+      <bpmn:incoming>Flow_Join_End</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <!-- Sequence flows -->
+    <bpmn:sequenceFlow id="Flow_Start_Split" sourceRef="StartEvent_1" targetRef="Gateway_Split"/>
+    <bpmn:sequenceFlow id="Flow_Split_TaskA" sourceRef="Gateway_Split" targetRef="Task_A"/>
+    <bpmn:sequenceFlow id="Flow_Split_TaskB" sourceRef="Gateway_Split" targetRef="Task_B"/>
+    <bpmn:sequenceFlow id="Flow_Split_TaskC" sourceRef="Gateway_Split" targetRef="Task_C"/>
+    <bpmn:sequenceFlow id="Flow_TaskA_Join" sourceRef="Task_A" targetRef="Gateway_Join"/>
+    <bpmn:sequenceFlow id="Flow_TaskB_Join" sourceRef="Task_B" targetRef="Gateway_Join"/>
+    <bpmn:sequenceFlow id="Flow_TaskC_Join" sourceRef="Task_C" targetRef="Gateway_Join"/>
+    <bpmn:sequenceFlow id="Flow_Join_End" sourceRef="Gateway_Join" targetRef="EndEvent_1"/>
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_OrderFulfillment">
+      <!-- Node Shapes -->
+      <bpmndi:BPMNShape id="Shape_Start" bpmnElement="StartEvent_1">
+        <dc:Bounds x="160" y="202" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Split" bpmnElement="Gateway_Split">
+        <dc:Bounds x="250" y="195" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TaskA" bpmnElement="Task_A">
+        <dc:Bounds x="360" y="80" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TaskB" bpmnElement="Task_B">
+        <dc:Bounds x="360" y="180" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_TaskC" bpmnElement="Task_C">
+        <dc:Bounds x="360" y="280" width="120" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Join" bpmnElement="Gateway_Join">
+        <dc:Bounds x="540" y="195" width="50" height="50"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_End" bpmnElement="EndEvent_1">
+        <dc:Bounds x="650" y="202" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <!-- Flow Edges & Arrows -->
+      <bpmndi:BPMNEdge id="Edge_Start_Split" bpmnElement="Flow_Start_Split">
+        <di:waypoint x="196" y="220"/>
+        <di:waypoint x="250" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Split_TaskA" bpmnElement="Flow_Split_TaskA">
+        <di:waypoint x="275" y="195"/>
+        <di:waypoint x="275" y="120"/>
+        <di:waypoint x="360" y="120"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Split_TaskB" bpmnElement="Flow_Split_TaskB">
+        <di:waypoint x="300" y="220"/>
+        <di:waypoint x="360" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Split_TaskC" bpmnElement="Flow_Split_TaskC">
+        <di:waypoint x="275" y="245"/>
+        <di:waypoint x="275" y="320"/>
+        <di:waypoint x="360" y="320"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_TaskA_Join" bpmnElement="Flow_TaskA_Join">
+        <di:waypoint x="480" y="120"/>
+        <di:waypoint x="565" y="120"/>
+        <di:waypoint x="565" y="195"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_TaskB_Join" bpmnElement="Flow_TaskB_Join">
+        <di:waypoint x="480" y="220"/>
+        <di:waypoint x="540" y="220"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_TaskC_Join" bpmnElement="Flow_TaskC_Join">
+        <di:waypoint x="480" y="320"/>
+        <di:waypoint x="565" y="320"/>
+        <di:waypoint x="565" y="245"/>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Join_End" bpmnElement="Flow_Join_End">
+        <di:waypoint x="590" y="220"/>
+        <di:waypoint x="650" y="220"/>
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

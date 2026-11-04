@@ -1,0 +1,15 @@
+{
+  "unit": "hours",
+  "seed": 42,
+  "resources": [
+    {
+      "role": "Operations",
+      "capacity": 2,
+      "cost_per_unit": 25.0
+    }
+  ],
+  "tasks": {},
+  "routes": {},
+  "probabilities": {},
+  "solver_seconds": 5
+}
