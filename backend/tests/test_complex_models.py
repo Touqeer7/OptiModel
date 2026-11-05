@@ -92,7 +92,7 @@ def test_large_import_verify_simulate_round_trip(count):
     assert restored.model_dump() == source.model_dump()
     verification = verify(restored)
     assert verification["status"] == "no_counterexample"
-    assert verification["method"] == "structural_reduction"
+    assert verification["method"] == "acyclic_and_induction"
     baseline = simulate(restored, scenario())
     assert baseline["metrics"]["makespan"] == count
     assert len(baseline["schedule"]) == count
@@ -114,7 +114,8 @@ def test_wide_parallel_reduction_avoids_state_explosion():
     assert limited["status"] == "inconclusive"
     result = verify(workflow)
     assert result["status"] == "no_counterexample"
-    assert result["certificate"]["matched_gateway_regions"] == 1
+    assert result["method"] == "acyclic_and_induction"
+    assert result["certificate"]["rule"] == "acyclic_and_token_induction"
     assert result["states"] == 0  # no fabricated state enumeration
     baseline = simulate(workflow, scenario(32))
     assert len(baseline["schedule"]) == 64

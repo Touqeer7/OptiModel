@@ -32,7 +32,7 @@ Sequence-flow adjacency is indexed once. The selected execution graph removes un
 
 Before invoking CP-SAT, the optimizer calculates precedence and per-role workload lower bounds. If the feasible baseline meets that bound, it is certified optimal with method `analytical_lower_bound`; no solver search is claimed. Otherwise bounded CP-SAT search returns its actual status, bound and gap. A timeout retains the feasible baseline. Search limits do not include Python model construction. Durations below 0.001 scenario units or outside exact millisecond-scale precision are not rounded into solver input.
 
-This still optimizes a task schedule, not BPMN topology. `original.bpmn` remains the imported source, including subprocesses and source DI. There is no claim that a differently selected route is an optimization gain.
+The scheduling formulation optimizes a task schedule. The later [revised-output pipeline](revised-bpmn-output.md) separately compiles resource ordering into a selected-route BPMN, with supported gateway repairs and verification. `original.bpmn` remains the imported source, including subprocesses and source DI. There is no claim that a differently selected route is an optimization gain.
 
 ## Prompt behavior
 
@@ -57,7 +57,7 @@ npm run build
 npm run test:e2e
 ```
 
-The backend regression suite contains **156 passing tests**. All eight browser journeys pass. The browser suite covers the original journey, mobile/XOR routing, reviewed generation, unsupported-source assessment, loading/provider errors, clarification responses nested-subprocess import/simulation, and condition-free XOR import with explicit route selection. Browser tests use an isolated temporary database; benchmark inputs are synthetic and do not access user projects.
+The backend regression suite contains **191 passing tests**. All thirteen browser journeys pass. The browser suite covers the original journey, mobile/XOR routing, reviewed generation, unsupported-source assessment, loading/provider errors, clarification responses nested-subprocess import/simulation, and condition-free XOR import with explicit route selection. Browser tests use an isolated temporary database; benchmark inputs are synthetic and do not access user projects.
 
 Live smoke checks against the configured provider returned HTTP 200 for a two-task sequence, a six-task parallel/decision process, and a vague-input clarification. The two defined processes returned no token counterexample; the vague input offered no placeholder draft after the final guard. See [the recorded summaries](evidence/live-generation-checks.json). These synthetic checks do not prove general extraction fidelity.
 
@@ -66,10 +66,10 @@ See [raw benchmark measurements](evidence/complex-model-benchmarks.json). Three 
 
 | Synthetic input | Parse median | Verification median | Simulation median | Scheduling median |
 |---|---:|---:|---:|---:|
-| 100-task benchmark | 6.89 ms | 1.61 ms | 3.48 ms | 1.82 ms |
-| 1000-task benchmark | 113.65 ms | 56.25 ms | 113.16 ms | 18.37 ms |
-| 1998-task benchmark | 320.14 ms | 208.88 ms | 394.13 ms | 37.86 ms |
-| 128 independent parallel tasks | 14.08 ms | 3.44 ms | 7.41 ms | 1035.11 ms |
+| 100-task benchmark | 7.12 ms | 1.12 ms | 3.60 ms | 1.87 ms |
+| 1000-task benchmark | 114.98 ms | 50.88 ms | 122.97 ms | 17.68 ms |
+| 1998-task benchmark | 316.30 ms | 189.70 ms | 389.95 ms | 36.14 ms |
+| 128 independent parallel tasks | 13.47 ms | 2.63 ms | 7.48 ms | 1034.91 ms |
 
 Use [the nested order example](../examples/complex/nested-order.bpmn) and [its scenario](../examples/complex/nested-order-scenario.json) for a reviewable demonstration. The stock-available route completes in 35 illustrative minutes; unavailable stock completes in 8. Different routing is explicitly not counted as improvement.
 
@@ -77,7 +77,7 @@ Use [the nested order example](../examples/complex/nested-order.bpmn) and [its s
 
 - Execution/simulation still requires one acyclic process instance, one activation per node, fixed positive task durations and continuously available single-role slots (64 total slots).
 - Cycles, multi-instance tasks, event subprocesses, call activities, inclusive/event-based/complex gateways, timers/boundary/termination/message events and multi-pool orchestration receive structural inspection only. Embedded subprocesses with multiple internal endings or aggregate timing are not flattened into guessed behavior.
-- No arrivals, multi-case throughput, stochastic distributions, calendars, preemption, multiple simultaneous roles per task, structural process redesign or revised optimized BPMN export.
+- No arrivals, multi-case throughput, stochastic distributions, calendars, preemption, multiple simultaneous roles per task, arbitrary business process redesign. Validated selected-route BPMN export and bounded gateway repair are implemented separately.
 - Unstructured parallel graphs can reach bounded verification limits. A feasible scheduling result does not prove business-condition feasibility or process-wide optimality across routes.
 - Browser diagrams and tables may become cumbersome near the import cap; engine benchmarks do not establish browser frame-rate guarantees. PDF topology remains summarized above 45 nodes, with the complete BPMN and JSON available separately.
 - Multilingual generation is provider-dependent; PDF fonts do not guarantee every script. Local storage is not a multi-user security boundary. See the earlier architecture and engineering audit for persistence and deployment scope.
@@ -85,3 +85,11 @@ Use [the nested order example](../examples/complex/nested-order.bpmn) and [its s
 ## Optional XOR condition metadata
 
 An XOR split may be imported without condition expressions or a default flow. Each such branch receives a warning, while its source XML and IDs remain unchanged. Verification still explores alternatives; simulation and selected-trace optimization still require an explicit scenario route or supplied probabilities. A default flag never silently selects a branch. Multiple defaults, invalid references and genuine token deadlocks retain their existing checks. Generated drafts receive the same nonblocking warnings without unnecessary AI repair or invented conditions.
+
+## Automatic simulation follow-up
+
+The browser now starts a labeled demo simulation after imports, sample selection and reviewed-draft acceptance by default. It also starts on entering Simulate for an existing model without a current run. Missing inputs use disclosed, deterministic assumptions, with optional manual controls afterward. See [automatic simulation](automatic-simulation.md) for policies, API, provenance and limits. The earlier manual requirement for explicit scenario values remains in the manual API; the automatic endpoint constructs and records those values before using the same engine.
+
+## Revised-output follow-up
+
+Automatic runs now also attempt verified closed split/join repairs and publish a selected-route optimized BPMN/SVG, full-process corrected BPMN and change record. The acyclic AND-only token-induction method supplements the earlier reduction/reachability methods. See [the precise rules, replay evidence and limits](revised-bpmn-output.md).

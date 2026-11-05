@@ -56,7 +56,7 @@ class Node(Model):
     kind: NodeKind
     duration: float | None = Field(default=None, gt=0, le=1_000_000)
     role: str | None = Field(default=None, min_length=1, max_length=100)
-    provenance: Literal["source", "user", "example", "unknown", "ai_extracted"] = "unknown"
+    provenance: Literal["source", "user", "example", "unknown", "ai_extracted", "assumed"] = "unknown"
 
 
 class Edge(Model):
@@ -76,6 +76,14 @@ class Workflow(Model):
     time_unit: Literal["time units", "minutes", "hours", "days"] = "time units"
     assumptions: list[str] = Field(default_factory=list, max_length=100)
     ambiguities: list[str] = Field(default_factory=list, max_length=100)
+    resource_pools: list["Resource"] = Field(default_factory=list, max_length=64)
+
+    @field_validator("resource_pools")
+    @classmethod
+    def valid_pools(cls, resources):
+        if len({r.role for r in resources}) != len(resources) or sum(r.capacity for r in resources) > 64:
+            raise ValueError("Resource pools require unique roles and at most 64 total slots.")
+        return resources
 
 
 class Clarification(Model):
@@ -98,10 +106,13 @@ class Resource(Model):
 class TaskSetting(Model):
     duration: float = Field(gt=0, le=1_000_000)
     role: str = Field(min_length=1, max_length=100)
-    provenance: Literal["user", "example", "source", "ai_extracted"] = "user"
+    provenance: Literal["user", "example", "source", "ai_extracted", "assumed"] = "user"
 
 
 class Scenario(Model):
+    produce_revised_bpmn: bool = False
+    execution_mode: Literal["manual", "automatic_demo"] = "manual"
+    automatic_assumptions: list[str] = Field(default_factory=list, max_length=MAX_NODES * 3 + 65)
     unit: Literal["time units", "minutes", "hours", "days"] = "time units"
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
     resources: list[Resource] = Field(min_length=1, max_length=64)
@@ -118,3 +129,20 @@ class Scenario(Model):
         if sum(r.capacity for r in resources) > 64:
             raise ValueError("At most 64 resource slots are supported.")
         return resources
+
+
+class AutoTaskInput(Model):
+    duration: float | None = Field(default=None, gt=0, le=1_000_000)
+    role: str | None = Field(default=None, max_length=100)
+    provenance: Literal["user", "example", "source", "ai_extracted", "assumed"] = "user"
+
+
+class AutoScenarioInput(Model):
+    produce_revised_bpmn: bool = True
+    unit: Literal["time units", "minutes", "hours", "days"] | None = None
+    seed: int = Field(default=42, ge=0, le=2_147_483_647)
+    solver_seconds: float = Field(default=5, ge=0.01, le=15)
+    resources: list[Resource] = Field(default_factory=list, max_length=64)
+    tasks: dict[str, AutoTaskInput] = Field(default_factory=dict, max_length=MAX_NODES)
+    routes: dict[str, str] = Field(default_factory=dict, max_length=MAX_NODES)
+    probabilities: dict[str, dict[str, float]] = Field(default_factory=dict, max_length=MAX_NODES)

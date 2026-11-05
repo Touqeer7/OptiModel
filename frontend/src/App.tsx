@@ -1,5 +1,7 @@
 import { ScenarioEditor } from "./ScenarioEditor";
-import { useEffect, useRef, useState } from "react";
+import { RevisionOutput } from "./RevisionOutput";
+import { QuantitativeEvaluation } from "./QuantitativeEvaluation";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   ArrowRight,
@@ -70,13 +72,18 @@ const configFor = (model: Model): Config => ({
   seed: 42,
   solver_seconds: 5,
   resources: [
-    ...new Set(
-      model.ir.nodes
-        .filter(isTask)
-        .map((n) => n.role)
-        .filter((r): r is string => !!r),
-    ),
-  ].map((role) => ({ role, capacity: 1, cost_per_unit: null })),
+    ...(model.ir.resource_pools || []),
+    ...[
+      ...new Set(
+        model.ir.nodes
+          .filter(isTask)
+          .map((n) => n.role)
+          .filter((r): r is string => !!r),
+      ),
+    ]
+      .filter((role) => !model.ir.resource_pools?.some((r) => r.role === role))
+      .map((role) => ({ role, capacity: 1, cost_per_unit: null })),
+  ],
   tasks: {},
   routes: {},
   probabilities: {},
@@ -102,6 +109,11 @@ function Blank({ title, children }: { title: string; children: ReactNode }) {
 
 export default function App() {
   const [section, setSection] = useState<Section>("Workspace");
+  const [autoSimulate, setAutoSimulate] = useState(
+    () => localStorage.getItem("studio.autoSimulate") !== "false",
+  );
+  const automaticStarted = useRef(new Set<string>());
+  const selectionEpoch = useRef(0);
   const [projects, setProjects] = useState<Project[]>([]);
   const [pid, setPid] = useState(localStorage.getItem("studio.project") || "");
   const [models, setModels] = useState<Model[]>([]);
@@ -156,8 +168,9 @@ export default function App() {
   const result = run?.result;
   const selectedSimulation = result?.optimization?.selected || result?.baseline;
   const selectedNode = model?.ir.nodes.find((n) => n.id === selected);
+  const automaticRun = run?.config.execution_mode === "automatic_demo";
 
-  async function action(label: string, fn: () => Promise<void>) {
+  const action = useCallback(async (label: string, fn: () => Promise<void>) => {
     setBusy(label);
     setError(null);
     setNotice("");
@@ -171,7 +184,7 @@ export default function App() {
     } finally {
       setBusy("");
     }
-  }
+  }, []);
   useEffect(() => {
     let live = true;
     setBusy("Opening local workspace");
@@ -212,6 +225,7 @@ export default function App() {
     setSavedScenarios([]);
     if (!pid) return;
     localStorage.setItem("studio.project", pid);
+    const selectionAtStart = selectionEpoch.current;
     let live = true;
     void Promise.all([
       api<Model[]>(`/projects/${pid}/models`),
@@ -221,7 +235,7 @@ export default function App() {
       ),
     ])
       .then(([m, r, s]) => {
-        if (!live) return;
+        if (!live || selectionEpoch.current !== selectionAtStart) return;
         setModels(m);
         setRuns(r);
         setSavedScenarios(s);
@@ -271,6 +285,7 @@ export default function App() {
   }, [pollId, pollState]);
 
   function selectModel(value: Model, supplied?: Config) {
+    selectionEpoch.current += 1;
     setModel(value);
     setConfig(supplied || configFor(value));
     setXml(value.xml);
@@ -298,6 +313,11 @@ export default function App() {
     const all = await api<Model[]>(`/projects/${projectId}/models`);
     setModels(all);
     selectModel(m, supplied);
+    setRun(null);
+    if (autoSimulate) {
+      await runAutomatically(m, supplied);
+      return;
+    }
     setSection("Model");
     setNotice("Model saved as a new version. Source XML preserved.");
   }
@@ -327,6 +347,76 @@ export default function App() {
       setSection(mode === "optimize" ? "Optimize" : "Simulate");
     });
   }
+  const runAutomatically = useCallback(
+    async (value: Model, supplied?: Config) => {
+      automaticStarted.current.add(value.id);
+      const overrides = supplied
+        ? {
+            unit: supplied.unit,
+            seed: supplied.seed,
+            solver_seconds: supplied.solver_seconds,
+            resources: supplied.resources.filter(
+              (r) => r.role.trim() && r.capacity > 0,
+            ),
+            tasks: Object.fromEntries(
+              Object.entries(supplied.tasks).map(([id, task]) => [
+                id,
+                {
+                  ...task,
+                  duration:
+                    Number.isFinite(task.duration) && task.duration > 0
+                      ? task.duration
+                      : null,
+                  role: task.role || null,
+                },
+              ]),
+            ),
+            routes: Object.fromEntries(
+              Object.entries(supplied.routes).filter(([, route]) => !!route),
+            ),
+            probabilities: supplied.probabilities,
+          }
+        : undefined;
+      const next = await api<Run>(`/projects/${value.project_id}/runs/auto`, {
+        model_id: value.id,
+        ...(overrides ? { config: overrides } : {}),
+      });
+      setConfig(next.config);
+      setRun(next);
+      setRuns((previous) => [
+        next,
+        ...previous.filter((r) => r.id !== next.id),
+      ]);
+      setSection("Simulate");
+      setNotice(
+        "Simulation started automatically. Demo assumptions are recorded with this run.",
+      );
+    },
+    [],
+  );
+  useEffect(() => {
+    if (
+      !autoSimulate ||
+      section !== "Simulate" ||
+      !model ||
+      busy ||
+      run?.model_id === model.id ||
+      automaticStarted.current.has(model.id)
+    )
+      return;
+    void action("Starting automatic simulation", () =>
+      runAutomatically(model, config),
+    );
+  }, [
+    autoSimulate,
+    section,
+    model,
+    busy,
+    run,
+    action,
+    runAutomatically,
+    config,
+  ]);
   function updateTask(
     id: string,
     field: "duration" | "role",
@@ -556,7 +646,9 @@ export default function App() {
                     : section === "Validate"
                       ? "Structural checks and token-flow analysis, with a clear statement of scope."
                       : section === "Simulate"
-                        ? "Define timing, roles, and capacity before running a reproducible single-case experiment."
+                        ? autoSimulate
+                          ? "Simulation runs automatically. Review the results and disclosed assumptions below."
+                          : "Define timing, roles, and capacity before running a reproducible single-case experiment."
                         : section === "Optimize"
                           ? "A constrained solver searches for a shorter schedule under identical task and resource assumptions."
                           : section === "Compare"
@@ -666,6 +758,29 @@ export default function App() {
           )}
           {section === "Workspace" && (
             <>
+              <section className="panel">
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={autoSimulate}
+                    onChange={(e) => {
+                      setAutoSimulate(e.target.checked);
+                      localStorage.setItem(
+                        "studio.autoSimulate",
+                        String(e.target.checked),
+                      );
+                    }}
+                  />
+                  Run simulation automatically
+                </label>
+                <p className="muted">
+                  Import a model, choose a sample, or accept an AI draft to see
+                  results automatically. Missing inputs use labeled demo
+                  assumptions: one time unit per task, one slot per role, and
+                  the default or first decision branch. You can adjust them
+                  afterward.
+                </p>
+              </section>
               <section className="workspace-intro">
                 <div>
                   <span className="eyebrow">START WITH A QUESTION</span>
@@ -1058,7 +1173,9 @@ export default function App() {
                             await api<Model[]>(`/projects/${projectId}/models`),
                           );
                           selectModel(m);
-                          setSection("Model");
+                          setRun(null);
+                          if (autoSimulate) await runAutomatically(m);
+                          else setSection("Model");
                         })
                       }
                     >
@@ -1112,6 +1229,11 @@ export default function App() {
               </div>
               {section === "Model" && (
                 <>
+                  <QuantitativeEvaluation
+                    modelId={model.id}
+                    run={run}
+                    initialOnly
+                  />
                   {model.diagnostics.some(
                     (d) => d.code === "flattened_subprocess",
                   ) && (
@@ -1311,7 +1433,10 @@ export default function App() {
                             {validation.verification.method ===
                             "structural_reduction"
                               ? "Matched gateway reduction"
-                              : "Bounded token exploration"}
+                              : validation.verification.method ===
+                                  "acyclic_and_induction"
+                                ? "Acyclic parallel token proof"
+                                : "Bounded token exploration"}
                           </strong>
                         </div>
                         <div>
@@ -1373,24 +1498,79 @@ export default function App() {
 
               {(section === "Simulate" || section === "Optimize") && (
                 <>
-                  <ScenarioEditor
-                    {...{
-                      model,
-                      config,
-                      setConfig,
-                      savedScenarios,
-                      setSavedScenarios,
-                      section,
-                      busy,
-                      active,
-                      pid,
-                      updateTask,
-                      start,
-                      action,
-                      setNotice,
-                      go,
-                    }}
-                  />
+                  <QuantitativeEvaluation modelId={model.id} run={run} />
+                  {run?.state === "succeeded" && run.result?.revision && (
+                    <RevisionOutput run={run} />
+                  )}
+                  <section className="panel">
+                    <div className="section-heading">
+                      <h2>
+                        {automaticRun
+                          ? "Automatic demo simulation"
+                          : "Automatic simulation"}
+                      </h2>
+                      <button
+                        type="button"
+                        className="button"
+                        disabled={!!busy || active}
+                        onClick={() =>
+                          void action("Starting automatic simulation", () =>
+                            runAutomatically(model, config),
+                          )
+                        }
+                      >
+                        <Play size={16} /> Run automatically
+                      </button>
+                    </div>
+                    <p className="muted">
+                      {automaticRun
+                        ? "This illustrative run uses the recorded model data and disclosed demo assumptions. It is not measured business performance."
+                        : "Run without filling in this form. Missing timing, staffing and routing values receive labeled demo assumptions."}
+                    </p>
+                    {automaticRun && (
+                      <details>
+                        <summary>
+                          View automatic assumptions (
+                          {run.config.automatic_assumptions?.length || 0})
+                        </summary>
+                        <ul>
+                          {run.config.automatic_assumptions
+                            ?.slice(0, 25)
+                            .map((note) => (
+                              <li key={note}>{note}</li>
+                            ))}
+                        </ul>
+                        {(run.config.automatic_assumptions?.length || 0) >
+                          25 && (
+                          <p>
+                            First 25 shown. All assumptions are included in the
+                            results JSON export.
+                          </p>
+                        )}
+                      </details>
+                    )}
+                  </section>
+                  <details open={!automaticRun}>
+                    <summary>Adjust assumptions or optimize (optional)</summary>
+                    <ScenarioEditor
+                      {...{
+                        model,
+                        config,
+                        setConfig,
+                        savedScenarios,
+                        setSavedScenarios,
+                        section,
+                        busy,
+                        active,
+                        pid,
+                        updateTask,
+                        start,
+                        action,
+                        setNotice,
+                        go,
+                      }}
+                    />
+                  </details>
                   {run && (
                     <section className="panel experiment">
                       <div className="section-heading">
@@ -1486,8 +1666,11 @@ export default function App() {
                               experiment.{" "}
                               {result.optimization &&
                                 `Method ${result.optimization.method?.replaceAll("_", " ") || "CP-SAT"}; status ${result.optimization.status}; bound ${num(result.optimization.best_bound)}; gap ${result.optimization.relative_gap == null ? "unknown" : `${num(result.optimization.relative_gap * 100)}%`}; search limit ${result.optimization.time_limit_seconds}s.`}{" "}
-                              No structural BPMN change. Throughput and
-                              real-world savings are not measured.
+                              {result.revision
+                                ? "The original is preserved; the separate revised output has its own validation and route scope."
+                                : "No structural BPMN change."}{" "}
+                              Steady-state throughput and real-world savings are
+                              not measured.
                             </p>
                             <Timeline
                               data={selectedSimulation}
@@ -1545,7 +1728,9 @@ export default function App() {
                                   <p key={r.message}>{r.message}</p>
                                 ))}
                                 <p className="muted">
-                                  {result.assumptions.join(" ")}
+                                  {result.assumptions.slice(0, 25).join(" ")}
+                                  {result.assumptions.length > 25 &&
+                                    " Additional assumptions are recorded in the results JSON."}
                                 </p>
                               </div>
                             </div>
@@ -1761,9 +1946,9 @@ export default function App() {
                     <Download size={19} />
                   </div>
                   <p className="muted">
-                    Original BPMN, schedule, inputs, solver evidence, and a
-                    readable PDF. A scheduling result never claims to be a
-                    revised process model.
+                    Original source, validated revised BPMN when available,
+                    schedules, change records, solver evidence, and a readable
+                    PDF.
                   </p>
                   {!runs.some((r) => r.state === "succeeded") ? (
                     <Blank title="No completed reports yet">
@@ -1792,6 +1977,22 @@ export default function App() {
                               {[
                                 ["report.pdf", "PDF report"],
                                 ["original.bpmn", "Original BPMN"],
+                                ...(r.result?.revision?.available_artifacts.includes(
+                                  "optimized.bpmn",
+                                )
+                                  ? [
+                                      [
+                                        "optimized.bpmn",
+                                        r.result.revision.method ===
+                                        "resource_ordered_execution_plan"
+                                          ? "Optimized BPMN"
+                                          : "Annotated BPMN",
+                                      ],
+                                      ["corrected.bpmn", "Full process BPMN"],
+                                      ["optimized.svg", "Diagram SVG"],
+                                      ["changes.json", "Change record"],
+                                    ]
+                                  : []),
                                 ["schedule.csv", "Schedule CSV"],
                                 ["results.json", "Results JSON"],
                                 ["bundle.zip", "Bundle ZIP"],

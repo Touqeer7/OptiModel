@@ -24,7 +24,15 @@ Open **http://127.0.0.1:8000**. Keep that terminal open; Ctrl+C stops the server
 
 If port 8000 is occupied, use `python run.py --port 8001`; do not terminate an unrelated service. `python run.py --check` checks local readiness without starting a server. Windows commands were executed in this environment; Linux/macOS scripts have not been executed here.
 
-## First experiment (no key)
+## Automatic simulation (default)
+
+Import a BPMN/XML file, choose a sample, or accept a reviewed AI draft. Studio automatically verifies it, repairs supported split/join deadlocks, simulates and optimizes the selected route, then opens the saved results and final BPMN diagram. No simulation form entry is required. Missing durations, staffing and routes use clearly labeled demo assumptions; original source values are preserved. Unknown physical units remain generic time units. Read [automatic simulation and its assumptions](docs/automatic-simulation.md).
+
+The **Run simulation automatically** checkbox in Workspace is on by default. Optional changes are under **Adjust assumptions or optimize (optional)**. Deadlocks without a verified supported repair and unsupported execution semantics still produce diagnostics.
+
+## Manual reference experiment (no key)
+
+Turn off **Run simulation automatically** in Workspace to follow these manual reference steps.
 
 1. In **Workspace**, choose **Resource-constrained operations**. It creates a local project if needed and saves an immutable model version.
 2. Inspect the BPMN and select a task, then click **Validate model**. The supported model reports no bounded counterexample; this is not a claim of complete BPMN soundness.
@@ -53,7 +61,7 @@ See [the upgrade, evidence and limits](docs/complex-model-upgrade.md), [nested e
 | Verification | Matching-region reduction when applicable; otherwise bounded marking exploration, traces and completion checks; truncation is inconclusive |
 | Editing | Source XML edits become new validated versions; separate display layout if coordinates are missing |
 
-See the [support matrix](docs/bpmn-support-matrix.md) and [metrics/assumptions](docs/metrics-and-assumptions.md). A scheduling experiment exports the **Original / Analyzed BPMN** unchanged. Revised process transformations, automated capacity Pareto search, stochastic durations and multi-case throughput are not implemented.
+See the [support matrix](docs/bpmn-support-matrix.md) and [metrics/assumptions](docs/metrics-and-assumptions.md). The original BPMN is preserved. Automatic and optimization runs additionally export a validated selected-route execution plan as **optimized.bpmn** and **optimized.svg**, plus a full-process **corrected.bpmn** and a change/verification record. See [revised BPMN output and scope](docs/revised-bpmn-output.md). Automated capacity Pareto search, arbitrary business redesign, stochastic durations and multi-case throughput are not implemented.
 
 ## Optional AI configuration
 

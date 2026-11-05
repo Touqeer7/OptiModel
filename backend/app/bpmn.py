@@ -7,7 +7,7 @@ from pathlib import Path
 import networkx as nx
 from lxml import etree as ET
 
-from .domain import Diagnostic, DomainError, Edge, Node, TASK_KINDS, Workflow
+from .domain import Diagnostic, DomainError, Edge, Node, Resource, TASK_KINDS, Workflow
 from .graph_tools import flow_index
 from .limits import MAX_XML, MAX_XML_DEPTH, MAX_XML_ELEMENTS
 
@@ -461,6 +461,12 @@ def parse(xml: str) -> tuple[Workflow, list[Diagnostic]]:
         edges=edges,
         assumptions=assumptions,
         time_unit=meta.get("time_unit", "time units") if meta is not None else "time units",
+        resource_pools=[
+            Resource(
+                role=e.get("role", ""), capacity=e.get("capacity", "1"), cost_per_unit=e.get("cost_per_unit")
+            )
+            for e in process.findall(f"{{{BPMN}}}extensionElements/{{{STUDIO}}}resource")
+        ],
     )
     issues = validate(workflow)
     if issues:
@@ -547,8 +553,13 @@ def serialize(workflow: Workflow) -> str:
     process = ET.SubElement(
         root, f"{{{BPMN}}}process", id=workflow.id, name=workflow.name, isExecutable="false"
     )
-    if workflow.assumptions or workflow.time_unit != "time units":
+    if workflow.assumptions or workflow.time_unit != "time units" or workflow.resource_pools:
         extensions = ET.SubElement(process, f"{{{BPMN}}}extensionElements")
+        for resource in workflow.resource_pools:
+            attributes = {"role": resource.role, "capacity": str(resource.capacity)}
+            if resource.cost_per_unit is not None:
+                attributes["cost_per_unit"] = str(resource.cost_per_unit)
+            ET.SubElement(extensions, f"{{{STUDIO}}}resource", **attributes)
         if workflow.time_unit != "time units":
             ET.SubElement(extensions, f"{{{STUDIO}}}process", time_unit=workflow.time_unit)
         for assumption in workflow.assumptions:

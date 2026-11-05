@@ -143,6 +143,7 @@ def _extract(prompt):
         "Tasks need explicit AND gateways for parallelism and XOR gateways for alternatives, with separate splits and joins. "
         "An XOR merge must never wait for an unselected branch. An AND join must wait for all parallel branches. "
         "Do not invent tasks, roles, durations, conditions, probabilities or parallelism. Unstated duration/role must be null. "
+        "Leave resource_pools empty unless staffing capacities were explicitly stated. "
         "Set provenance ai_extracted only for stated facts. Preserve every material ambiguity in ambiguities; list assumptions separately. "
         "Set time_unit to a stated common unit and convert explicitly stated mixed durations to that unit, e.g. 1 hour = 60 minutes. "
         "If no timing unit is stated use time units. Never reinterpret an unspecified day as a working shift. "

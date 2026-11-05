@@ -16,7 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from . import bpmn, nlp_generator
-from .domain import DomainError, Scenario, Workflow
+from .domain import AutoScenarioInput, DomainError, Scenario, Workflow
+from .automatic import prepare_scenario
 from .jobs import Jobs
 from .inspection import inspect_xml
 from .limits import MAX_PROMPT, MAX_XML, capabilities
@@ -52,6 +53,15 @@ class RunBody(Body):
 class ScenarioBody(Body):
     name: str = Field(min_length=1, max_length=120)
     config: Scenario
+
+
+class AutoRunBody(Body):
+    model_id: str = Field(min_length=32, max_length=32)
+    config: AutoScenarioInput | None = None
+
+
+class EvaluationBody(Body):
+    config: Scenario | None = None
 
 
 class ExtractBody(Body):
@@ -326,6 +336,19 @@ def create_app(data_dir: Path | None = None):
             "display_xml": record["xml"] if "BPMNShape" in record["xml"] else bpmn.serialize(workflow),
         }
 
+    @app.post("/api/v1/models/{model_id}/evaluate")
+    def evaluate_model(model_id: str, body: EvaluationBody):
+        from .evaluation import initial_evaluation
+
+        record = get("models", model_id)
+        workflow = Workflow.model_validate(record["ir"])
+        config = body.config or prepare_scenario(workflow)
+        result = initial_evaluation(workflow, config)
+        result["scenario_source"] = (
+            "Recorded run assumptions" if body.config else "Automatic illustrative assumptions"
+        )
+        return result
+
     @app.get("/api/v1/projects/{project_id}/scenarios")
     def scenarios(project_id: str):
         get("projects", project_id)
@@ -354,6 +377,12 @@ def create_app(data_dir: Path | None = None):
         from .simulation import choose_routes, settings
 
         workflow = Workflow.model_validate(record["ir"])
+        if body.config.execution_mode == "automatic_demo":
+            # Rebuild notes after optional edits so stored explanations match this run's values.
+            supplied = AutoScenarioInput.model_validate(
+                body.config.model_dump(exclude={"execution_mode", "automatic_assumptions"})
+            )
+            body.config = prepare_scenario(workflow, supplied)
         settings(workflow, body.config)
         choose_routes(workflow, body.config)
         if not app.state.jobs.reserve():
@@ -379,6 +408,15 @@ def create_app(data_dir: Path | None = None):
             raise
         app.state.jobs.submit(ident)
         return run
+
+    @app.post("/api/v1/projects/{project_id}/runs/auto", status_code=202)
+    def automatic_run(project_id: str, body: AutoRunBody):
+        get("projects", project_id)
+        record = get("models", body.model_id)
+        if record["project_id"] != project_id:
+            raise HTTPException(404, "Model does not belong to this project.")
+        config = prepare_scenario(Workflow.model_validate(record["ir"]), body.config)
+        return start_run(project_id, RunBody(model_id=body.model_id, config=config))
 
     @app.get("/api/v1/projects/{project_id}/runs")
     def history(project_id: str):

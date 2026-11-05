@@ -12,7 +12,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from .bpmn import layout
+from .bpmn import layout, parse
 from .domain import TASK_KINDS, Workflow
 
 INK, TEAL, COPPER = "#1D2725", "#315E68", "#C87544"
@@ -22,6 +22,10 @@ ARTIFACTS = {
     "results.json": "application/json",
     "report.pdf": "application/pdf",
     "bundle.zip": "application/zip",
+    "corrected.bpmn": "application/xml",
+    "optimized.bpmn": "application/xml",
+    "optimized.svg": "image/svg+xml",
+    "changes.json": "application/json",
 }
 
 
@@ -31,14 +35,21 @@ def safe_csv(value):
     return "'" + text if text.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")) else text
 
 
-def export_run(store, run, model, result):
+def export_run(store, run, model, result, revised_documents=None):
     directory = store.run_dir(run["project_id"], run["id"])
     directory.mkdir(parents=True, exist_ok=True)
+    revised_documents = revised_documents or {}
+    allowed = {"corrected.bpmn", "optimized.bpmn", "optimized.svg", "changes.json"}
+    if set(revised_documents) - allowed:
+        raise ValueError("Unexpected revised artifact name.")
+    names = ["original.bpmn", "schedule.csv", "results.json", "report.pdf", "bundle.zip", *revised_documents]
     result["artifacts"] = [
-        {"name": name, "media_type": media, "url": f"/api/v1/runs/{run['id']}/artifacts/{name}"}
-        for name, media in ARTIFACTS.items()
+        {"name": name, "media_type": ARTIFACTS[name], "url": f"/api/v1/runs/{run['id']}/artifacts/{name}"}
+        for name in names
     ]
     (directory / "original.bpmn").write_text(model["xml"], encoding="utf-8", newline="")
+    for name, document in revised_documents.items():
+        (directory / name).write_text(document, encoding="utf-8", newline="")
     (directory / "results.json").write_text(
         json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8"
     )
@@ -70,9 +81,12 @@ def export_run(store, run, model, result):
                     ]
                 )
     (directory / "schedule.csv").write_text(buffer.getvalue(), encoding="utf-8-sig", newline="")
-    build_report(result, Workflow.model_validate(model["ir"]), directory / "report.pdf")
+    revised_workflow = (
+        parse(revised_documents["optimized.bpmn"])[0] if "optimized.bpmn" in revised_documents else None
+    )
+    build_report(result, Workflow.model_validate(model["ir"]), directory / "report.pdf", revised_workflow)
     with zipfile.ZipFile(directory / "bundle.zip", "w", zipfile.ZIP_DEFLATED) as archive:
-        for name in ARTIFACTS:
+        for name in names:
             if name != "bundle.zip":
                 archive.write(directory / name, arcname=name)
 
@@ -165,7 +179,7 @@ def timeline(rows, unit):
     return drawing
 
 
-def build_report(result, workflow, path):
+def build_report(result, workflow, path, revised_workflow=None):
     styles = getSampleStyleSheet()
     styles.add(
         ParagraphStyle(
@@ -219,6 +233,29 @@ def build_report(result, workflow, path):
         ]
     )
     heading("Decision summary")
+    revision = result.get("revision")
+    if revision:
+        heading("Revised BPMN output")
+        parts.append(
+            p(
+                f"Revision method: {revision['method']}; validation: {revision['status']}; schedule optimality proved: {revision['optimality_proven']}."
+            )
+        )
+        parts.append(p(revision["baseline_scope"]))
+        parts.append(p(revision["scope"]))
+        for change in revision["changes"]:
+            parts.append(p(change["message"]))
+        parts.append(
+            p(
+                "Download optimized.bpmn and optimized.svg for the selected-route execution plan; corrected.bpmn retains the full process. See changes.json for verification, hashes and scope."
+            )
+        )
+    if result["config"].get("execution_mode") == "automatic_demo":
+        parts.append(
+            p(
+                "AUTOMATIC DEMO SIMULATION: missing inputs use disclosed assumptions. These illustrative results are not measured business performance. See the recorded assumptions and results JSON."
+            )
+        )
     parts.append(
         p(
             opt["explanation"]
@@ -228,7 +265,7 @@ def build_report(result, workflow, path):
     )
     parts.append(
         p(
-            "The original BPMN is unchanged. These are simulated single-case outcomes under the stated assumptions, not measured business savings."
+            "The imported original BPMN is preserved separately. These are simulated single-case outcomes under the stated assumptions, not measured business savings."
         )
     )
     table(
@@ -250,7 +287,6 @@ def build_report(result, workflow, path):
                 base["metrics"]["staffed_capacity_cost"],
                 selected["metrics"]["staffed_capacity_cost"],
             ],
-            ["Throughput", "Not measured: one case", "Not measured: one case"],
         ],
         [230, 130, 130],
     )
@@ -269,7 +305,102 @@ def build_report(result, workflow, path):
     for recommendation in result["recommendations"]:
         parts.append(p(recommendation["message"]))
     parts.append(PageBreak())
-    heading("Original / analyzed process topology")
+    evaluation = result.get("performance_evaluation")
+    if evaluation:
+        heading("Quantitative performance evaluation")
+        parts.append(
+            p(
+                "Initial BPMN versus final output under the recorded scenario. Units are shown per metric; rates describe one simulated case."
+            )
+        )
+        parts.append(p(f"Change reference: {evaluation['change_reference']}."))
+        repaired = evaluation.get("repaired_baseline") is not None
+        header = (
+            ["Metric / unit", "Initial BPMN"]
+            + (["Repaired baseline"] if repaired else [])
+            + ["Final BPMN", "Change"]
+        )
+        rows = [header]
+        for row in evaluation["rows"]:
+            rows.append(
+                [f"{row['label']} ({row['unit']})", row["initial"]]
+                + ([row["repaired_baseline"]] if repaired else [])
+                + [row["final"], row["change"]]
+            )
+        table(rows, [202, 72, 72, 72, 72] if repaired else [235, 85, 85, 85])
+        for name in ("initial", "repaired_baseline", "final"):
+            stage = evaluation.get(name)
+            if stage and stage.get("unavailable_reason"):
+                parts.append(p(f"{name.replace('_', ' ').title()}: {stage['unavailable_reason']}"))
+        parts.append(PageBreak())
+        heading("Measurement definitions and interpretation")
+        for text in [*evaluation["notes"], *evaluation["definitions"]]:
+            parts.append(p(text))
+        heading("Resource utilization comparison")
+        resources = {
+            stage: {r["role"]: r for r in (evaluation.get(stage) or {}).get("resources", [])}
+            for stage in ("initial", "repaired_baseline", "final")
+        }
+        roles = sorted({role for values in resources.values() for role in values})
+        from .evaluation import number
+
+        table(
+            [
+                ["Role", "Initial %"]
+                + (["Repaired %"] if repaired else [])
+                + ["Final %", "Final busy / available"]
+            ]
+            + [
+                [role, number(resources["initial"].get(role, {}).get("utilization_pct"))]
+                + (
+                    [number(resources["repaired_baseline"].get(role, {}).get("utilization_pct"))]
+                    if repaired
+                    else []
+                )
+                + [
+                    number(resources["final"].get(role, {}).get("utilization_pct")),
+                    f"{number(resources['final'].get(role, {}).get('busy_time'))} / {number(resources['final'].get(role, {}).get('available_time'))} slot-{unit}",
+                ]
+                for role in roles
+            ],
+            [140, 70, 70, 70, 140] if repaired else [170, 85, 85, 150],
+        )
+        heading("Queue-based bottlenecks")
+        for name in ("initial", "repaired_baseline", "final"):
+            stage = evaluation.get(name)
+            if stage is None:
+                continue
+            queued = stage["bottleneck_activities"]
+            parts.append(
+                p(
+                    f"{name.replace('_', ' ').title()}: "
+                    + (
+                        "; ".join(
+                            f"{r['name']} ({r['id']}), role {r['role']}, wait {r['wait']:g} {unit}"
+                            for r in queued[:25]
+                        )
+                        if stage["available"] and queued
+                        else "No queued activities."
+                        if stage["available"]
+                        else "Unavailable before repair."
+                    )
+                )
+            )
+            if len(queued) > 25:
+                parts.append(p("First 25 shown; complete bottleneck list is in results.json."))
+        parts.append(PageBreak())
+    if revised_workflow is not None:
+        heading("Final revised diagram")
+        parts.extend(
+            [
+                topology(revised_workflow),
+                Spacer(1, 12),
+                p(
+                    "Selected-route execution plan when structurally rewritten; full-process annotations when the rewrite budget is exceeded. The BPMN and SVG files contain the complete output diagram."
+                ),
+            ]
+        )
+    heading("Imported source topology (before any repairs)")
     parts.extend(
         [
             topology(workflow),
@@ -277,7 +408,11 @@ def build_report(result, workflow, path):
             p("Topology derived from the recorded source model. Scheduling changes are exported separately."),
         ]
     )
-    heading("Verification evidence")
+    heading(
+        "Repaired baseline verification evidence"
+        if revision and revision["repaired_deadlock"]
+        else "Initial BPMN verification evidence"
+    )
     verification = result["verification"]
     parts.append(
         p(
@@ -330,8 +465,15 @@ def build_report(result, workflow, path):
     )
     parts.append(PageBreak())
     heading("Assumptions and provenance")
-    for warning in result["assumptions"] + base["warnings"]:
+    all_warnings = result["assumptions"] + base["warnings"]
+    for warning in all_warnings[:25]:
         parts.append(p(warning))
+    if len(all_warnings) > 25:
+        parts.append(
+            p(
+                f"First 25 of {len(all_warnings)} assumptions/notes shown. The complete list is included in results.json."
+            )
+        )
     for diagnostic in result["diagnostics"]:
         parts.append(p(diagnostic["message"]))
     table(
@@ -343,7 +485,7 @@ def build_report(result, workflow, path):
     parts.append(p(f"Explicit selected routes: {base['selected_routes'] or 'no exclusive split'}."))
     parts.append(
         p(
-            "Acyclic, single-process, one-start/one-end subset only. No loops, timers, subprocesses, calendars, multi-case arrivals or stochastic task durations. XOR conditions are never executed as code. Idle capacity is not classified as waste."
+            "Acyclic single-process subset with one plain start, normal end events and regular single-entry/exit embedded subprocesses. No loops, timers, event/call subprocesses, calendars, multi-case arrivals or stochastic task durations. XOR conditions are never executed as code. Idle capacity is not classified as waste."
         )
     )
     parts.append(

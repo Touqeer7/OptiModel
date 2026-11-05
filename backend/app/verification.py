@@ -1,6 +1,7 @@
 """Flow-place Petri net and bounded reachability. No blanket soundness claim."""
 
 from collections import deque
+from math import prod
 from time import monotonic
 
 from .bpmn import require_valid
@@ -23,7 +24,7 @@ def structured_certificate(workflow: Workflow):
         return None
     g = nx.MultiDiGraph()
     g.add_nodes_from(nodes)
-    g.add_edges_from((e.source, e.target) for e in workflow.edges)
+    g.add_edges_from((e.source, e.target, {"markings": 1}) for e in workflow.edges)
     serial, regions = 0, 0
     changed = True
     while changed:
@@ -33,8 +34,10 @@ def structured_certificate(workflow: Workflow):
                 continue
             if g.in_degree(ident) == g.out_degree(ident) == 1:
                 before, after = next(g.predecessors(ident)), next(g.successors(ident))
+                count = next(iter(g.get_edge_data(before, ident).values()))["markings"]
+                count += next(iter(g.get_edge_data(ident, after).values()))["markings"]
                 g.remove_node(ident)
-                g.add_edge(before, after)
+                g.add_edge(before, after, markings=count)
                 serial += 1
                 changed = True
         for fork in list(g):
@@ -48,8 +51,10 @@ def structured_certificate(workflow: Workflow):
                 or set(g.predecessors(join)) != {fork}
             ):
                 continue
+            counts = [edge["markings"] for edge in g.get_edge_data(fork, join).values()]
+            count = prod(counts) if nodes[fork].kind == "parallelGateway" else sum(counts)
             g.remove_edges_from(list(g.edges(fork, keys=True)))
-            g.add_edge(fork, join)
+            g.add_edge(fork, join, markings=count)
             regions += 1
             changed = True
     if set(g) == {starts[0], ends[0]} and g.number_of_edges() == 1:
@@ -58,6 +63,8 @@ def structured_certificate(workflow: Workflow):
             "matched_gateway_regions": regions,
             "source_nodes": len(nodes),
             "source_flows": len(workflow.edges),
+            # Decimal string preserves exact counts beyond JavaScript integer precision.
+            "reachable_markings": str(next(iter(g.edges(data=True)))[2]["markings"] + 2),
         }
     return None
 
@@ -97,6 +104,35 @@ def to_petri(workflow: Workflow) -> dict:
 
 def verify(workflow: Workflow, max_states: int = 5000, seconds: float = 2) -> dict:
     net = to_petri(workflow)
+    # With only AND control in a validated DAG, topological induction establishes
+    # that each node fires once after its predecessors, and every flow is consumed.
+    if (
+        len(workflow.nodes) > 12
+        and max_states >= 5000
+        and seconds >= 2
+        and not any(n.kind == "exclusiveGateway" for n in workflow.nodes)
+    ):
+        return {
+            "status": "no_counterexample",
+            "soundness": "not_claimed",
+            "method": "acyclic_and_induction",
+            "scope": "Topological token induction for the validated acyclic AND-only subset; each node fires once and all active flow tokens are consumed. This is not full BPMN conformance or business correctness.",
+            "states": 0,
+            "truncated": False,
+            "limit_reason": None,
+            "proper_completion": True,
+            "all_states_can_complete": True,
+            "dead_transitions": [],
+            "deadlock_count": 0,
+            "counterexample_trace": [],
+            "deadlock_marking": {},
+            "petri_net": net,
+            "certificate": {
+                "source_nodes": len(workflow.nodes),
+                "source_flows": len(workflow.edges),
+                "rule": "acyclic_and_token_induction",
+            },
+        }
     # Avoid exponential interleavings when an exact compositional reduction applies.
     if len(workflow.nodes) > 32 and max_states >= 5000 and seconds >= 2:
         certificate = structured_certificate(workflow)

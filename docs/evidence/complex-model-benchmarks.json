@@ -10,32 +10,32 @@
       "xml_bytes": 78036,
       "flows": 101,
       "median_ms": {
-        "parse_ms": 6.894,
-        "verification_ms": 1.613,
-        "simulation_ms": 3.479,
-        "optimization_ms": 1.82
+        "parse_ms": 7.116,
+        "verification_ms": 1.119,
+        "simulation_ms": 3.598,
+        "optimization_ms": 1.872
       },
       "samples_ms": [
         {
-          "parse_ms": 7.036,
-          "verification_ms": 1.691,
-          "simulation_ms": 3.611,
-          "optimization_ms": 1.834
+          "parse_ms": 7.804,
+          "verification_ms": 1.119,
+          "simulation_ms": 3.598,
+          "optimization_ms": 1.932
         },
         {
-          "parse_ms": 6.52,
-          "verification_ms": 1.516,
-          "simulation_ms": 3.406,
-          "optimization_ms": 1.82
+          "parse_ms": 7.116,
+          "verification_ms": 1.02,
+          "simulation_ms": 3.67,
+          "optimization_ms": 1.872
         },
         {
-          "parse_ms": 6.894,
-          "verification_ms": 1.613,
-          "simulation_ms": 3.479,
-          "optimization_ms": 1.805
+          "parse_ms": 7.065,
+          "verification_ms": 1.123,
+          "simulation_ms": 3.55,
+          "optimization_ms": 1.841
         }
       ],
-      "verification_method": "structural_reduction",
+      "verification_method": "acyclic_and_induction",
       "verification_status": "no_counterexample",
       "solver_status_last_repeat": "optimal",
       "baseline_makespan": 395.0,
@@ -48,32 +48,32 @@
       "xml_bytes": 783174,
       "flows": 1001,
       "median_ms": {
-        "parse_ms": 113.651,
-        "verification_ms": 56.251,
-        "simulation_ms": 113.16,
-        "optimization_ms": 18.369
+        "parse_ms": 114.979,
+        "verification_ms": 50.883,
+        "simulation_ms": 122.972,
+        "optimization_ms": 17.678
       },
       "samples_ms": [
         {
-          "parse_ms": 120.519,
-          "verification_ms": 56.891,
-          "simulation_ms": 113.16,
-          "optimization_ms": 25.126
+          "parse_ms": 123.533,
+          "verification_ms": 50.883,
+          "simulation_ms": 126.319,
+          "optimization_ms": 27.718
         },
         {
-          "parse_ms": 109.355,
-          "verification_ms": 56.0,
-          "simulation_ms": 110.525,
-          "optimization_ms": 18.369
+          "parse_ms": 111.96,
+          "verification_ms": 50.011,
+          "simulation_ms": 107.007,
+          "optimization_ms": 17.181
         },
         {
-          "parse_ms": 113.651,
-          "verification_ms": 56.251,
-          "simulation_ms": 119.623,
-          "optimization_ms": 17.027
+          "parse_ms": 114.979,
+          "verification_ms": 51.798,
+          "simulation_ms": 122.972,
+          "optimization_ms": 17.678
         }
       ],
-      "verification_method": "structural_reduction",
+      "verification_method": "acyclic_and_induction",
       "verification_status": "no_counterexample",
       "solver_status_last_repeat": "optimal",
       "baseline_makespan": 3997.0,
@@ -86,32 +86,32 @@
       "xml_bytes": 1578580,
       "flows": 1999,
       "median_ms": {
-        "parse_ms": 320.136,
-        "verification_ms": 208.878,
-        "simulation_ms": 394.132,
-        "optimization_ms": 37.858
+        "parse_ms": 316.299,
+        "verification_ms": 189.696,
+        "simulation_ms": 389.954,
+        "optimization_ms": 36.137
       },
       "samples_ms": [
         {
-          "parse_ms": 319.964,
-          "verification_ms": 208.878,
-          "simulation_ms": 394.132,
-          "optimization_ms": 35.532
+          "parse_ms": 316.053,
+          "verification_ms": 193.993,
+          "simulation_ms": 399.377,
+          "optimization_ms": 36.137
         },
         {
-          "parse_ms": 320.136,
-          "verification_ms": 212.462,
-          "simulation_ms": 372.296,
-          "optimization_ms": 37.858
+          "parse_ms": 316.299,
+          "verification_ms": 189.682,
+          "simulation_ms": 389.095,
+          "optimization_ms": 36.752
         },
         {
-          "parse_ms": 333.13,
-          "verification_ms": 198.299,
-          "simulation_ms": 396.354,
-          "optimization_ms": 39.026
+          "parse_ms": 320.917,
+          "verification_ms": 189.696,
+          "simulation_ms": 389.954,
+          "optimization_ms": 34.978
         }
       ],
-      "verification_method": "structural_reduction",
+      "verification_method": "acyclic_and_induction",
       "verification_status": "no_counterexample",
       "solver_status_last_repeat": "optimal",
       "baseline_makespan": 7986.0,
@@ -124,32 +124,32 @@
       "xml_bytes": 153421,
       "flows": 258,
       "median_ms": {
-        "parse_ms": 14.081,
-        "verification_ms": 3.44,
-        "simulation_ms": 7.407,
-        "optimization_ms": 1035.113
+        "parse_ms": 13.468,
+        "verification_ms": 2.63,
+        "simulation_ms": 7.478,
+        "optimization_ms": 1034.907
       },
       "samples_ms": [
         {
-          "parse_ms": 13.799,
-          "verification_ms": 3.525,
-          "simulation_ms": 7.764,
-          "optimization_ms": 1038.22
+          "parse_ms": 13.401,
+          "verification_ms": 2.882,
+          "simulation_ms": 7.313,
+          "optimization_ms": 1034.907
         },
         {
-          "parse_ms": 22.422,
-          "verification_ms": 3.44,
-          "simulation_ms": 7.407,
-          "optimization_ms": 1035.113
+          "parse_ms": 13.468,
+          "verification_ms": 2.626,
+          "simulation_ms": 7.482,
+          "optimization_ms": 1034.837
         },
         {
-          "parse_ms": 14.081,
-          "verification_ms": 3.39,
-          "simulation_ms": 7.344,
-          "optimization_ms": 1034.779
+          "parse_ms": 13.928,
+          "verification_ms": 2.63,
+          "simulation_ms": 7.478,
+          "optimization_ms": 1036.319
         }
       ],
-      "verification_method": "structural_reduction",
+      "verification_method": "acyclic_and_induction",
       "verification_status": "no_counterexample",
       "solver_status_last_repeat": "feasible",
       "baseline_makespan": 36.0,

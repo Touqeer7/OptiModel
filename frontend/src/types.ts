@@ -15,6 +15,7 @@ export interface Edge {
   is_default: boolean;
 }
 export interface Workflow {
+  resource_pools?: Resource[];
   id: string;
   name: string;
   nodes: Node[];
@@ -40,6 +41,9 @@ export interface Setting {
   provenance: string;
 }
 export interface Config {
+  produce_revised_bpmn?: boolean;
+  execution_mode?: "manual" | "automatic_demo";
+  automatic_assumptions?: string[];
   unit: string;
   seed: number;
   solver_seconds: number;
@@ -166,6 +170,8 @@ export interface Optimization {
   bpmn_changed: boolean;
 }
 export interface Result {
+  performance_evaluation?: PerformanceEvaluation;
+  revision?: Revision;
   run_id: string;
   model_name: string;
   config: Config;
@@ -174,6 +180,75 @@ export interface Result {
   verification: Verification;
   recommendations: { node_id: string | null; message: string }[];
   assumptions: string[];
+}
+export interface EvaluationPhase {
+  available: boolean;
+  unavailable_reason: string | null;
+  reachable_states: { value: string; status: string; method: string };
+  deadlocks: { value: number; status: string; method: string };
+  metrics: Record<string, number | null> | null;
+  resources: {
+    role: string;
+    slots: number;
+    busy_time: number;
+    available_time: number;
+    idle_time: number;
+    utilization_pct: number | null;
+  }[];
+  bottleneck_activities: {
+    id: string;
+    name: string;
+    role: string;
+    wait: number;
+  }[];
+  bottleneck_roles: string[];
+}
+export interface PerformanceEvaluation {
+  unit: string;
+  initial: EvaluationPhase;
+  final: EvaluationPhase | null;
+  repaired_baseline: EvaluationPhase | null;
+  rows: {
+    key: string;
+    label: string;
+    unit: string;
+    initial: string;
+    repaired_baseline: string;
+    final: string;
+    change: string;
+  }[];
+  definitions: string[];
+  notes: string[];
+  change_reference: string;
+  scenario_source?: string;
+  scenario_mode?: string;
+  assumptions?: string[];
+}
+export interface Revision {
+  status: string;
+  method: string;
+  fallback_reason: string | null;
+  optimality_proven: boolean;
+  scope: string;
+  repaired_deadlock: boolean;
+  baseline_scope: string;
+  source_verification_status: string;
+  full_process_verification_status?: string;
+  remaining_bottlenecks: { node_id: string; role: string; wait: number }[];
+  output_verification: { status: string; method: string };
+  baseline_makespan: number;
+  selected_makespan: number;
+  resource_wait_before: number;
+  resource_wait_after: number;
+  bottleneck_notice: string;
+  excluded_task_ids: string[];
+  available_artifacts: string[];
+  changes: {
+    node_id: string;
+    message: string;
+    before: string;
+    after: string;
+  }[];
 }
 export interface Run {
   id: string;

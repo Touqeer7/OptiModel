@@ -1870,6 +1870,33 @@ td.mono {
     line-height: 1.6;
   }
 }
+.quantitative-table {
+  min-width: 680px;
+}
+.quantitative-table th:first-child {
+  min-width: 230px;
+  max-width: 340px;
+}
+.quantitative-table td {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.quantitative-evaluation tbody th {
+  font-size: 12px;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: normal;
+  background: transparent;
+  color: var(--ink);
+  border-bottom: 1px solid #e0e5da;
+}
+.quantitative-evaluation details {
+  margin-top: 20px;
+  line-height: 1.6;
+}
+.quantitative-evaluation summary {
+  cursor: pointer;
+}
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,

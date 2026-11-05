@@ -20,6 +20,9 @@ def capabilities():
             "prompt_characters": MAX_PROMPT,
         },
         "supported": [
+            "verified_closed_gateway_join_repairs",
+            "resource_ordered_selected_route_bpmn_and_svg_export",
+            "automatic_demo_simulation_with_disclosed_assumptions",
             "read_only_structural_inspection_of_unsupported_bpmn",
             "acyclic_single_process",
             "nested_single_entry_exit_embedded_subprocesses",
